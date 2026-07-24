@@ -1,0 +1,26 @@
+# macOS
+.DS_Store
+
+# Editor
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Dependencies
+node_modules/
+
+# API Keys (敏感信息，不可公开)
+deepseek-api
+llm-config.json
+
+# AI 记忆文件 (个人使用)
+MEMORY.md
+memory/
+CLAUDE.md
+AGENT.md
+.claude/
+
+# 归档
+archive/

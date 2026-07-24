@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';">
+  <title>3for - Multi-Source Search</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- ─── Top Search Bar ─── -->
+  <header id="search-header">
+    <div class="logo">
+      <span class="logo-text">3for</span>
+      <span class="logo-sub">multi-source search</span>
+    </div>
+    <div class="search-wrapper">
+      <div class="search-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+      </div>
+      <input
+        type="text"
+        id="main-search"
+        placeholder="One query, multiple sources... press Enter to search all sources"
+        autocomplete="off"
+        spellcheck="false"
+      >
+      <kbd id="search-hint">Enter</kbd>
+    </div>
+    <div class="header-actions">
+      <div id="zoom-indicator" class="zoom-indicator">100%</div>
+      <button id="btn-summary" class="btn-summary-header" title="答案总结">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+        </svg>
+        <span>总结</span>
+        <span class="summary-header-badge">AI</span>
+      </button>
+      <button id="btn-settings" class="icon-btn" title="LLM Settings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68 1.65 1.65 0 0 0 10 3.17V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+      </button>
+      <button id="btn-reload-all" class="icon-btn" title="Reload all sources">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="23 4 23 10 17 10"></polyline>
+          <polyline points="1 20 1 14 7 14"></polyline>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ─── Main Content Area ─── -->
+  <div class="content-area">
+    <!-- Source Panels Grid (dynamically rendered) -->
+    <main id="panels-grid">
+      <!-- Panels are rendered dynamically by renderer.js -->
+    </main>
+
+    <!-- ─── AI Summary Drawer (Right Side) ─── -->
+    <div id="summary-drawer" class="summary-drawer">
+      <div class="drawer-header">
+        <div class="drawer-header-left">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+          </svg>
+          <span>AI 答案总结</span>
+        </div>
+        <button class="drawer-close-btn" id="drawer-close-btn" title="关闭">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="drawer-body">
+        <!-- Idle State -->
+        <div class="summary-state summary-state-idle" id="summary-idle">
+          <p>搜索后点击下方按钮，AI 将综合所有信息源生成答案总结</p>
+          <button class="btn-generate" id="btn-generate">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+            </svg>
+            生成总结
+          </button>
+        </div>
+
+        <!-- Loading State -->
+        <div class="summary-state summary-state-loading" id="summary-loading" style="display:none;">
+          <div class="summary-loading-row">
+            <div class="spinner-sm"></div>
+            <span id="summary-loading-text">正在提取各信息源内容...</span>
+          </div>
+        </div>
+
+        <!-- Result State -->
+        <div class="summary-state summary-state-result" id="summary-result" style="display:none;">
+          <div class="summary-result-actions">
+            <button class="btn-regenerate" id="btn-regenerate">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+              </svg>
+              重新生成
+            </button>
+          </div>
+          <div class="summary-conclusion" id="summary-conclusion"></div>
+          <div class="summary-highlights" id="summary-highlights"></div>
+        </div>
+
+        <!-- Error State -->
+        <div class="summary-state summary-state-error" id="summary-error" style="display:none;">
+          <p class="summary-error-text" id="summary-error-text"></p>
+          <button class="btn-retry" id="btn-retry">重试</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Source Picker Modal ─── -->
+  <div id="source-picker-modal" class="source-picker-modal">
+    <div class="source-picker-content">
+      <div class="source-picker-header">
+        <span>选择信息源</span>
+        <button class="source-picker-close" id="source-picker-close" title="关闭">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="source-picker-grid" id="source-picker-grid">
+        <!-- Populated dynamically by renderer.js -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Settings Modal ─── -->
+  <div id="settings-modal" class="source-picker-modal">
+    <div class="source-picker-content settings-content">
+      <div class="source-picker-header">
+        <span>LLM 设置</span>
+        <button class="source-picker-close" id="settings-close" title="关闭">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="settings-body">
+        <p class="settings-desc">支持任何 OpenAI 兼容 API（DeepSeek、通义千问、Kimi/Moonshot、火山方舟、轨迹流动、OpenAI 等）</p>
+
+        <div class="settings-field">
+          <label>API Base URL</label>
+          <input type="text" id="settings-base-url" placeholder="https://api.deepseek.com/chat/completions">
+        </div>
+
+        <div class="settings-field">
+          <label>API Key</label>
+          <input type="password" id="settings-api-key" placeholder="sk-...">
+        </div>
+
+        <div class="settings-field">
+          <label>模型名称</label>
+          <input type="text" id="settings-model" placeholder="deepseek-chat">
+        </div>
+
+        <div class="settings-presets">
+          <span class="settings-presets-label">常用供应商：</span>
+          <button class="preset-btn" data-base-url="https://api.deepseek.com/chat/completions" data-model="deepseek-chat">DeepSeek</button>
+          <button class="preset-btn" data-base-url="https://ark.cn-beijing.volces.com/api/v3/chat/completions" data-model="">火山方舟</button>
+          <button class="preset-btn" data-base-url="https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions" data-model="qwen-turbo">通义千问</button>
+          <button class="preset-btn" data-base-url="https://api.moonshot.cn/v1/chat/completions" data-model="moonshot-v1-8k">Kimi/Moonshot</button>
+          <button class="preset-btn" data-base-url="https://api.guiji.ai/v1/chat/completions" data-model="guiji-chat">轨迹流动</button>
+          <button class="preset-btn" data-base-url="https://api.openai.com/v1/chat/completions" data-model="gpt-4o">OpenAI</button>
+        </div>
+
+        <div class="settings-actions">
+          <button class="btn-generate" id="btn-save-settings">保存设置</button>
+          <span class="settings-status" id="settings-status"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
