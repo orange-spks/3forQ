@@ -21,6 +21,7 @@
 | 秘塔搜索 Metaso | AI搜索 | 学术搜索、知识图谱、结构化知识检索 |
 | 必应搜索 Bing | 搜索引擎 | 广泛网页覆盖、实时新闻资讯、多语言结果 |
 | Gemini | LLM | Google 多模态 AI、实时联网搜索、长上下文理解 |
+| Grok | LLM | xAI 实时搜索、长推理、少过滤响应 |
 
 默认展示 4 个面板（ChatGPT、Doubao、Xiaohongshu、Kimi），可通过面板头部的切换按钮自由替换为任意可用信息源。
 
@@ -56,11 +57,13 @@
 1. **浏览器模拟**：每个数据源以 Electron `<webview>` 形式嵌入，加载真实网站页面（非 API 调用）。
 2. **统一搜索**：顶部搜索框将查询广播到全部数据源。
 3. **自动填充 & 提交**：JavaScript 注入到每个 webview 中，自动找到搜索输入框、填充查询内容、并触发搜索。
-4. **答案总结**：搜索完成后，点击底部"答案总结"按钮，应用从各 webview 提取回答内容，通过 DeepSeek API 生成综合总结。
-5. **信息源切换**：点击面板头部的切换按钮，可从 6 个可用信息源中选择替换当前面板。
+4. **答案总结**：搜索完成后，点击底部"答案总结"按钮，应用从各 webview 提取回答内容，通过可配置 LLM API 生成综合总结。
+5. **信息源切换**：点击面板头部的切换按钮，可从 8 个可用信息源中选择替换当前面板。
 6. **面板全屏**：点击面板头部的展开按钮，可将单个面板放大至全屏查看。
-7. **全局缩放**：使用 `Ctrl/Cmd + Plus/Minus/0` 快捷键同时缩放所有面板内容。
-8. **会话持久化**：登录状态在应用重启后自动保留（通过 Electron `persist:sources` 分区）。登录一次，永久使用。
+7. **面板级缩放**：使用 `Ctrl/Cmd + Plus/Minus/0` 快捷键缩放当前鼠标悬停或聚焦的面板；未命中面板时，回退到同时缩放所有面板。
+8. **外部链接阅读器**：在任意 webview 中点击外部链接，会打开独立的 3for Reader 多标签窗口，支持复制链接、浏览器打开、页面内查找。
+9. **一键新建对话**：点击顶部工具栏的"为所有 LLM 新建对话"按钮，可同时为所有 LLM 源触发新建对话。
+10. **会话持久化**：登录状态在应用重启后自动保留（通过 Electron `persist:sources` 分区）。登录一次，永久使用。
 
 ### 为什么选择浏览器模拟？
 
@@ -74,16 +77,25 @@
 ```
 3for/
 ├── package.json       # 依赖和脚本
-├── main.js            # Electron 主进程（窗口管理 + LLM API 调用 + 应用菜单）
+├── main.js            # Electron 主进程（窗口管理 + LLM API 调用 + 应用菜单 + Reader 窗口）
 ├── preload.js         # 安全 IPC 桥接（contextBridge，暴露 summarize + LLM 配置方法）
 ├── llm-config.json    # LLM 供应商配置（自动生成，含 baseUrl/apiKey/model）
-├── deepseek-api       # DeepSeek API Key（旧版兼容，纯文本一行）
+├── deepseek-api       # DeepSeek API Key（旧版兼容，纯文本一行，推荐迁移到 llm-config.json）
+├── README.md          # 本文件
 ├── USER_GUIDE.md      # 用户使用手册
+├── CLAUDE.md          # 项目记忆与交互规则
+├── MEMORY.md          # 长期记忆
+├── memory/            # 每日记忆
+├── doc/               # 技术文档
+│   └── 问题注入逻辑.md
+├── logo/              # 各信息源 logo
 ├── src/
 │   ├── index.html     # 应用布局（搜索框 + webview 网格 + 总结面板 + 选择器 + 设置面板）
-│   ├── styles.css     # 暗色主题 UI 样式（含总结面板、设置面板、全屏展开、缩放指示器等）
-│   └── renderer.js    # 搜索广播 + 内容提取 + 总结交互 + 信息源切换 + 设置管理 + 全屏 + 缩放
-├── README.md          # 本文件
+│   ├── styles.css     # 暗色主题 UI 样式
+│   ├── renderer.js    # 搜索广播 + 内容提取 + 总结交互 + 信息源切换 + 设置管理 + 全屏 + 缩放
+│   ├── reader.html    # 外部链接阅读器窗口页面
+│   ├── reader.css     # 阅读器样式
+│   └── reader.js      # 阅读器多标签管理
 └── archive/           # 旧版 Python 原型（可行性验证阶段）
     ├── demo.py
     ├── prototype.py
@@ -128,9 +140,9 @@ npm run dev
 | `Enter`（搜索框内） | 广播搜索到所有数据源 |
 | `Ctrl/Cmd + L` | 聚焦搜索框 |
 | `Ctrl/Cmd + R` | 刷新所有数据源面板 |
-| `Ctrl/Cmd + +` | 放大所有面板内容（全局缩放） |
-| `Ctrl/Cmd + -` | 缩小所有面板内容（全局缩放） |
-| `Ctrl/Cmd + 0` | 重置缩放至 100% |
+| `Ctrl/Cmd + +` | 放大当前悬停/聚焦的面板（未命中面板则缩放全部） |
+| `Ctrl/Cmd + -` | 缩小当前悬停/聚焦的面板（未命中面板则缩放全部） |
+| `Ctrl/Cmd + 0` | 重置当前悬停/聚焦的面板缩放（未命中面板则重置全部） |
 | `Escape` | 取消搜索框焦点 / 关闭信息源选择器 / 退出全屏面板 |
 
 ## 功能详解
@@ -152,9 +164,9 @@ npm run dev
 - 按钮图标变为收起箭头
 - 再次点击或按 `Escape` 可退出全屏
 
-### 全局缩放
+### 面板级缩放
 
-使用 `Ctrl/Cmd + Plus` 放大、`Ctrl/Cmd + Minus` 缩小、`Ctrl/Cmd + 0` 重置。缩放同时应用到所有 webview 面板，右上角短暂显示当前缩放百分比。
+使用 `Ctrl/Cmd + Plus` 放大、`Ctrl/Cmd + Minus` 缩小、`Ctrl/Cmd + 0` 重置。默认缩放当前鼠标悬停或键盘聚焦的面板；如果没有任何面板被瞄准，则同时应用到所有 webview 面板。每个面板的缩放档位独立保存，右上角短暂显示当前缩放百分比。
 
 ### 答案总结
 
@@ -196,22 +208,23 @@ npm run dev
 - **轨迹流动**：`https://api.guiji.ai/v1/chat/completions` / `guiji-chat`
 - **OpenAI**：`https://api.openai.com/v1/chat/completions` / `gpt-4o`
 
-用户只需填写 Base URL、API Key 和模型名称即可。设置保存在 `llm-config.json` 文件中。旧版 `deepseek-api` 文件仍然兼容（自动迁移）。
+用户只需填写 Base URL、API Key 和模型名称即可。设置保存在 `llm-config.json` 文件中。旧版 `deepseek-api` 文件仍然兼容（自动迁移），建议新用户直接使用设置面板配置。
 
 ### 自动填充机制
 
 在顶部搜索框按 Enter 后，应用会：
 
 1. 对每个面板调用 `webview.executeJavaScript()`
-2. 注入的脚本使用多种选择器策略查找搜索输入框：
-   - `<textarea>` 元素
-   - `[contenteditable="true"]` 元素
-   - `<div role="textbox">` 元素
-   - `<input type="text">` / `<input type="search">` 元素
+2. 注入的脚本根据源类型选择策略：
+   - **Grok**：优先通过特征选择器（`placeholder`、`aria-label`）命中真正的 prompt 输入框，避免误填「搜索已有对话」
+   - **其他 LLM 源**：使用 `textarea` / `contenteditable` / `div[role="textbox"]` / `input[type="text"]` 等选择器，排除搜索框后优先选择页面中下部最靠下的输入框
+   - **非 LLM 源**：使用包含 `input[type="search"]` 的选择器，取第一个可见输入框
 3. 使用 React 兼容的 value setter 填充内容（触发 `input`/`change`/`compositionend` 等事件）
 4. 尝试点击发送/提交按钮（多种选择器策略，包括搜索输入框附近的按钮）
 5. 若按钮未找到，回退到触发 Enter 按键事件（keydown + keyup）
 6. 自动重试最多 3 次（间隔 1 秒），适应页面加载延迟
+
+详细定位逻辑可参考 `doc/问题注入逻辑.md`。
 
 ### 为什么用 Electron（而不是 Web 应用）？
 
@@ -235,13 +248,16 @@ Webview 使用 `partition="persist:sources"`，将 Cookie、localStorage 和 Ind
 - [x] 键盘快捷键 + 应用菜单（Windows/macOS/Linux）
 - [x] **AI 答案总结** — 可配置 LLM 驱动的综合结论 + 各来源亮点标注
 - [x] **常驻重新生成** — 总结结果支持随时重新生成
-- [x] **可配置信息源** — 7 种信息源可选，面板自由切换（ChatGPT、Doubao、Xiaohongshu、Kimi、秘塔搜索、必应搜索、Gemini）
+- [x] **可配置信息源** — 8 种信息源可选，面板自由切换（ChatGPT、Doubao、Xiaohongshu、Kimi、秘塔搜索、必应搜索、Gemini、Grok）
 - [x] **面板全屏展开** — 单个面板放大至全屏查看内容
-- [x] **全局缩放** — Ctrl/Cmd + Plus/Minus/0 同时缩放所有面板（支持更小缩放比例）
+- [x] **面板级缩放** — Ctrl/Cmd + Plus/Minus/0 缩放当前瞄准面板，未命中时回退到全局缩放
+- [x] **外部链接阅读器** — 在独立多标签窗口中打开 webview 外部链接
+- [x] **一键新建对话** — 同时为所有 LLM 源触发新建对话
 - [x] **优化总结提示词** — 综合多源结论 + 突出各来源独特价值
 - [x] **可配置 LLM 供应商** — 支持 OpenAI 兼容 API（DeepSeek、千问、Kimi、轨迹流动等），用户自填 base URL + API key
 - [x] **Windows 适配** — 完整支持 Windows 平台（快捷键、菜单、字体、缩放）
 - [x] **使用手册** — 完整的使用指南文档（USER_GUIDE.md）
+- [x] **技术文档** — 问题注入逻辑文档（doc/问题注入逻辑.md）
 
 ### 下一步计划
 - [ ] 内容提取优化 — 轮询等待回答完成、合并多内容块

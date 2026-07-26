@@ -1,0 +1,232 @@
+/**
+ * 3for Reader - 多标签阅读器样式
+ */
+
+:root {
+  --bg-primary:    #0f0f0f;
+  --bg-secondary:  #1a1a1a;
+  --bg-panel:      #141414;
+  --bg-input:      #1e1e1e;
+  --border:        #2a2a2a;
+  --border-focus:  #555;
+  --text-primary:  #e8e8e8;
+  --text-secondary:#888;
+  --text-muted:    #555;
+  --accent:        #6366f1;
+  --accent-glow:   rgba(99, 102, 241, 0.25);
+  --radius:        8px;
+  --radius-sm:     4px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+               'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+}
+
+.reader-app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* 顶部工具栏 */
+.reader-toolbar {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 10px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  gap: 10px;
+}
+
+/* 标签栏 */
+.reader-tabs {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.reader-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.reader-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 180px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.reader-tab:hover {
+  border-color: var(--border-focus);
+  color: var(--text-primary);
+}
+
+.reader-tab.active {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.tab-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text-muted);
+}
+
+.tab-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+/* 右侧工具 */
+.reader-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.tool-btn {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tool-btn:hover {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border-color: var(--border-focus);
+}
+
+.reader-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.reader-search input {
+  width: 160px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 12px;
+  outline: none;
+}
+
+.reader-search input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.search-count {
+  min-width: 32px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* 内容区 */
+.reader-content {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+.reader-webview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  /* 用 visibility 代替 display:none，保证 webview 在创建时就能获得正确的容器尺寸 */
+  visibility: hidden;
+  z-index: 0;
+}
+
+.reader-webview.active {
+  visibility: visible;
+  z-index: 1;
+}
+
+.reader-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+/* Toast 提示 */
+.reader-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  padding: 8px 16px;
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-size: 13px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 1000;
+}
+
+.reader-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}

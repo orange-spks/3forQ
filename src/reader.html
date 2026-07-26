@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';">
+  <title>3for Reader</title>
+  <link rel="stylesheet" href="reader.css">
+</head>
+<body>
+  <div class="reader-app">
+    <header class="reader-toolbar">
+      <div class="reader-tabs" id="reader-tabs"></div>
+      <div class="reader-tools">
+        <button id="btn-copy-link" class="tool-btn" title="复制当前标签链接">复制链接</button>
+        <button id="btn-open-external" class="tool-btn" title="在默认浏览器打开">浏览器打开</button>
+        <div class="reader-search">
+          <input type="text" id="reader-search-input" placeholder="搜索..." autocomplete="off" spellcheck="false">
+          <span id="reader-search-count" class="search-count"></span>
+        </div>
+      </div>
+    </header>
+    <main class="reader-content" id="reader-content">
+      <div class="reader-empty" id="reader-empty">
+        <p>点击外部链接以在新标签页中打开</p>
+      </div>
+    </main>
+  </div>
+  <script src="reader.js"></script>
+</body>
+</html>

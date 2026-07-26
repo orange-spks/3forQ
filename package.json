@@ -20,7 +20,8 @@
       "Kimi (kimi.moonshot.cn)",
       "Metaso (metaso.cn)",
       "Bing (bing.com)",
-      "Gemini (gemini.google.com)"
+      "Gemini (gemini.google.com)",
+      "Grok (grok.com)"
     ],
     "architecture": "Electron webview-based browser simulation"
   }

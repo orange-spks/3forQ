@@ -12,14 +12,15 @@
  * - Renders conclusion + per-source highlights
  *
  * Configurable sources:
- * - 6 available sources (ChatGPT, Doubao, Xiaohongshu, Kimi, Metaso, Bing)
+ * - 7 available sources (ChatGPT, Doubao, Xiaohongshu, Kimi, Metaso, Bing, Gemini, Grok)
  * - 4 active panels, swappable via source picker modal
  *
  * Fullscreen:
  * - Each panel can be expanded to fill the entire grid area
  *
- * Global zoom:
- * - Ctrl/Cmd + Plus/Minus/0 zooms all webviews simultaneously
+ * Panel-level zoom:
+ * - Ctrl/Cmd + Plus/Minus/0 zooms the hovered/focused webview panel,
+ *   falling back to all webviews when no panel is targeted
  */
 
 // ─── DOM References ─────────────────────────────────────────
@@ -34,6 +35,7 @@ const ALL_SOURCES = {
     name: 'ChatGPT',
     url: 'https://chatgpt.com',
     color: '#10a37f',
+    logo: '../logo/chatgpt.png',
     type: 'LLM',
     uniqueValue: '通用推理、逻辑分析、复杂问题深度拆解',
   },
@@ -41,6 +43,7 @@ const ALL_SOURCES = {
     name: 'Doubao',
     url: 'https://www.doubao.com/chat/',
     color: '#5b5bff',
+    logo: '../logo/doubao.png',
     type: 'LLM',
     uniqueValue: '响应最快、中文优化、关联视频教程',
   },
@@ -48,6 +51,7 @@ const ALL_SOURCES = {
     name: 'Xiaohongshu',
     url: 'https://www.xiaohongshu.com/explore',
     color: '#ff2442',
+    logo: '../logo/xhs.png',
     type: '社区',
     uniqueValue: '真实用户体验、种草避坑、生活决策参考',
   },
@@ -55,6 +59,7 @@ const ALL_SOURCES = {
     name: 'Kimi',
     url: 'https://kimi.moonshot.cn',
     color: '#6366f1',
+    logo: '../logo/kimi.png',
     type: 'LLM/搜索',
     uniqueValue: '长文本处理、深度分析、研究导向',
   },
@@ -62,6 +67,7 @@ const ALL_SOURCES = {
     name: 'Metaso',
     url: 'https://metaso.cn',
     color: '#00b8a9',
+    logo: '../logo/mita.webp',
     type: 'AI搜索',
     uniqueValue: '学术搜索、知识图谱、结构化知识检索',
   },
@@ -69,6 +75,7 @@ const ALL_SOURCES = {
     name: 'Bing',
     url: 'https://www.bing.com',
     color: '#008373',
+    logo: '../logo/bing.png',
     type: '搜索引擎',
     uniqueValue: '广泛网页覆盖、实时新闻资讯、多语言结果',
   },
@@ -76,8 +83,17 @@ const ALL_SOURCES = {
     name: 'Gemini',
     url: 'https://gemini.google.com/app',
     color: '#4285f4',
+    logo: '../logo/gemini.png',
     type: 'LLM',
     uniqueValue: 'Google 多模态 AI、实时联网搜索、长上下文理解',
+  },
+  grok: {
+    name: 'Grok',
+    url: 'https://grok.com',
+    color: '#000000',
+    logo: '../logo/grok.png',
+    type: 'LLM',
+    uniqueValue: 'xAI 实时搜索、长推理、少过滤响应',
   },
 };
 
@@ -97,49 +113,122 @@ function getWebviews() {
   return document.querySelectorAll('webview');
 }
 
+/** 判断某个源是否为 LLM 类型（包含 'LLM' 字样） */
+function isLLMSource(sourceId) {
+  return (getSourceConfig(sourceId).type || '').includes('LLM');
+}
+
+/** 各 LLM 源新建对话的动作配置：快捷键或 DOM 点击 */
+const NEW_CHAT_ACTIONS = {
+  chatgpt: { method: 'shortcut', key: 'O', modifiers: ['shift', 'ctrlOrCmd'] },
+  kimi:    { method: 'shortcut', key: 'K', modifiers: ['ctrlOrCmd'] },
+  doubao:  { method: 'shortcut', key: 'K', modifiers: ['shift', 'ctrlOrCmd'] },
+  gemini:  { method: 'dom', selectorText: /new chat/i, fallbackUrl: 'https://gemini.google.com/app' },
+  grok:    { method: 'dom', selectorText: /new chat/i, fallbackUrl: 'https://grok.com' },
+};
+
+/** 将配置中的 ctrl/ctrlOrCmd 映射为 Electron 可识别的 modifier */
+function buildElectronModifiers(modifiers) {
+  const isMac = window.appInfo?.platform === 'darwin';
+  return modifiers.map((m) => {
+    if (m === 'ctrlOrCmd') return isMac ? 'command' : 'control';
+    if (m === 'ctrl') return 'control';
+    return m;
+  });
+}
+
+/** 为单个 webview 触发新建对话 */
+async function triggerNewChat(webview) {
+  const sourceId = webview.id;
+  const action = NEW_CHAT_ACTIONS[sourceId];
+  if (!action) return;
+
+  try {
+    if (action.method === 'shortcut') {
+      webview.focus();
+      const mods = buildElectronModifiers(action.modifiers);
+      webview.sendInputEvent({ type: 'keyDown', keyCode: action.key, modifiers: mods });
+      webview.sendInputEvent({ type: 'keyUp', keyCode: action.key, modifiers: mods });
+    } else if (action.method === 'dom') {
+      const selectorRegexStr = action.selectorText.toString();
+      const clicked = await webview.executeJavaScript(`
+        (() => {
+          const regex = ${selectorRegexStr};
+          const buttons = Array.from(document.querySelectorAll('button, a, [role="button"]'));
+          const btn = buttons.find((b) => regex.test((b.textContent || b.innerText || '').trim()));
+          if (btn) {
+            btn.click();
+            return true;
+          }
+          return false;
+        })()
+      `);
+      if (!clicked && action.fallbackUrl) {
+        webview.loadURL(action.fallbackUrl);
+      }
+    }
+  } catch (err) {
+    console.warn('[3for] 新建对话失败:', sourceId, err.message);
+  }
+}
+
 // ─── Auto-fill Script ───────────────────────────────────────
 // This script is injected into each webview via executeJavaScript().
 // It runs in the context of the embedded website.
-function buildFillScript(query) {
+function buildFillScript(query, { preferBottom = false, sourceId = null } = {}) {
   return `(() => {
-    const query = ${JSON.stringify(query)};
+    try {
+      const query = ${JSON.stringify(query)};
+      const preferBottom = ${preferBottom};
+      const sourceId = ${JSON.stringify(sourceId)};
 
-    /* ── Utility: set value in a React/framework-compatible way ── */
+      /* ── Utility: set value in a React/framework-compatible way ── */
     function setNativeValue(el, value) {
-      const proto = el.tagName === 'TEXTAREA'
-        ? HTMLTextAreaElement.prototype
-        : HTMLInputElement.prototype;
-      const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-      if (setter) {
-        setter.call(el, value);
-      } else {
-        el.value = value;
-      }
+      try {
+        const proto = el.tagName === 'TEXTAREA'
+          ? HTMLTextAreaElement.prototype
+          : HTMLInputElement.prototype;
+        const descriptor = Object.getOwnPropertyDescriptor(proto, 'value');
+        if (descriptor && descriptor.set) {
+          descriptor.set.call(el, value);
+          return;
+        }
+      } catch (e) { /* fallback below */ }
+      el.value = value;
+    }
+
+    /* ── Utility: safely dispatch an event if the constructor exists ── */
+    function safeDispatch(el, EventCtor, type, opts = {}) {
+      try {
+        if (typeof EventCtor === 'function') {
+          el.dispatchEvent(new EventCtor(type, opts));
+        }
+      } catch (e) { /* ignore */ }
     }
 
     /* ── Utility: fill any input-like element ── */
     function fillInput(el, text) {
-      el.focus();
+      try { el.focus(); } catch (e) { /* ignore */ }
 
       if (el.getAttribute('contenteditable') === 'true'
           || el.getAttribute('role') === 'textbox') {
         // Contenteditable: set textContent and dispatch input event
         el.textContent = text;
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
+        safeDispatch(el, Event, 'input', { bubbles: true });
+        safeDispatch(el, Event, 'change', { bubbles: true });
       } else {
         // Standard input/textarea: use native setter for React compat
         setNativeValue(el, text);
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
+        safeDispatch(el, Event, 'input', { bubbles: true });
+        safeDispatch(el, Event, 'change', { bubbles: true });
       }
 
       // Additional: simulate character-level input for frameworks
       // that listen to compositionend or beforeinput events
-      el.dispatchEvent(new Event('compositionend', { bubbles: true }));
-      el.dispatchEvent(new InputEvent('beforeinput', {
+      safeDispatch(el, Event, 'compositionend', { bubbles: true });
+      safeDispatch(el, InputEvent, 'beforeinput', {
         bubbles: true, cancelable: true, inputType: 'insertText', data: text,
-      }));
+      });
     }
 
     /* ── Utility: try to submit via send button, fallback to Enter ── */
@@ -219,42 +308,118 @@ function buildFillScript(query) {
       return false;
     }
 
-    /* ── Step 1: Find the search/prompt input element ── */
-    const SELECTORS = [
-      'textarea',
-      '[contenteditable="true"]',
-      'div[role="textbox"]',
-      'input[type="text"]',
-      'input[type="search"]',
-      'input:not([type])',
-    ];
-
+    /* ── Step 0: Source-specific selector fallback ── */
+    // 对 Grok 等已知结构的源，优先用特征选择器命中真正的 prompt 输入框，
+    // 避免被顶部/侧边的“搜索已有对话”框干扰。
     let input = null;
-
-    for (const sel of SELECTORS) {
-      const candidates = document.querySelectorAll(sel);
-      // First pass: prefer visible elements with reasonable size
-      for (const el of candidates) {
-        const rect = el.getBoundingClientRect();
-        if (rect.width > 100 && rect.height > 0 && el.offsetParent !== null) {
-          input = el;
-          break;
-        }
+    if (sourceId === 'grok') {
+      const grokSelectors = [
+        'textarea[placeholder*="你想知道什么"]',
+        'textarea[aria-label*="向 Grok 提任何问题"]',
+        'textarea[placeholder*="Ask anything"]',
+        'textarea[aria-label*="Ask Grok anything"]',
+      ];
+      for (const sel of grokSelectors) {
+        try {
+          const el = document.querySelector(sel);
+          if (el && el.offsetParent !== null) {
+            const rect = el.getBoundingClientRect();
+            if (rect.width > 100 && rect.height > 0) {
+              input = el;
+              break;
+            }
+          }
+        } catch (e) { /* continue */ }
       }
-      if (input) break;
-
-      // Second pass: relaxed width check (some inputs start narrow)
-      for (const el of candidates) {
-        const rect = el.getBoundingClientRect();
-        if (rect.width > 50 && rect.height > 0) {
-          input = el;
-          break;
-        }
-      }
-      if (input) break;
     }
 
-    // Last resort: first textarea/input regardless of visibility
+    /* ── Step 1: Find the search/prompt input element ── */
+    // LLM 源的聊天输入通常是 textarea/contenteditable；把 input[type="text"] 置后，
+    // 避免 Grok 顶部“搜索已有对话”的普通输入框被优先命中。
+    const SELECTORS = preferBottom
+      ? [
+          'textarea',
+          '[contenteditable="true"]',
+          'div[role="textbox"]',
+          'input[type="text"]',
+          'input:not([type])',
+        ]
+      : [
+          'textarea',
+          '[contenteditable="true"]',
+          'div[role="textbox"]',
+          'input[type="text"]',
+          'input[type="search"]',
+          'input:not([type])',
+        ];
+
+    function isSearchLike(el) {
+      const hint = (
+        (el.getAttribute('placeholder') || '') + ' ' +
+        (el.getAttribute('aria-label') || '') + ' ' +
+        (el.textContent || '').trim().slice(0, 80)
+      ).toLowerCase();
+      return /search|搜索|查找/.test(hint);
+    }
+
+    const viewportHeight = window.innerHeight;
+    const candidates = [];
+
+    for (const sel of SELECTORS) {
+      for (const el of document.querySelectorAll(sel)) {
+        const rect = el.getBoundingClientRect();
+        if (rect.width > 100 && rect.height > 0 && el.offsetParent !== null) {
+          candidates.push({ el, rect });
+        }
+      }
+    }
+
+    // LLM 源：排除搜索框后，优先在页面中下部分选最靠下的输入框。
+    // 阈值用 0.33 而非 0.5，避免 Grok 等将 prompt 放在页面中部的布局被漏掉。
+    if (preferBottom && candidates.length > 0) {
+      const chatCandidates = candidates.filter((c) => !isSearchLike(c.el));
+      const lowerCandidates = chatCandidates.filter((c) => c.rect.top >= viewportHeight * 0.33);
+      const pool = lowerCandidates.length > 0 ? lowerCandidates : chatCandidates;
+      if (pool.length > 0) {
+        input = pool.reduce((best, cur) =>
+          cur.rect.bottom > best.rect.bottom ? cur : best
+        ).el;
+      }
+    }
+
+    // 非 LLM 源：使用第一个可见输入框（通常是顶部搜索框）
+    if (!input && candidates.length > 0 && !preferBottom) {
+      input = candidates[0].el;
+    }
+
+    // LLM 源兜底：仍没找到时，在所有可见输入里选最靠下的
+    if (!input && candidates.length > 0 && preferBottom) {
+      input = candidates.reduce((best, cur) =>
+        cur.rect.bottom > best.rect.bottom ? cur : best
+      ).el;
+    }
+
+    // 放宽宽度限制再试一次
+    if (!input) {
+      const looseCandidates = [];
+      for (const sel of SELECTORS) {
+        for (const el of document.querySelectorAll(sel)) {
+          const rect = el.getBoundingClientRect();
+          if (rect.width > 50 && rect.height > 0 && el.offsetParent !== null) {
+            looseCandidates.push({ el, rect });
+          }
+        }
+      }
+      if (looseCandidates.length > 0) {
+        input = preferBottom
+          ? looseCandidates.reduce((best, cur) =>
+              cur.rect.bottom > best.rect.bottom ? cur : best
+            ).el
+          : looseCandidates[0].el;
+      }
+    }
+
+    // 最后手段：忽略可见性
     if (!input) {
       input = document.querySelector('textarea')
            || document.querySelector('[contenteditable="true"]')
@@ -269,10 +434,17 @@ function buildFillScript(query) {
     /* ── Step 3: Submit (after a short delay to let the UI react) ── */
     return new Promise((resolve) => {
       setTimeout(() => {
-        const submitted = trySubmit(input);
-        resolve({ filled: true, submitted });
+        try {
+          const submitted = trySubmit(input);
+          resolve({ filled: true, submitted });
+        } catch (submitErr) {
+          resolve({ filled: true, submitted: false, submitError: submitErr.message });
+        }
       }, 500);
     });
+    } catch (e) {
+      return { filled: false, reason: 'exception', error: e.message, stack: e.stack };
+    }
   })()`;
 }
 
@@ -441,8 +613,13 @@ function attachWebviewListeners(webview) {
       badge.textContent = 'Ready';
       badge.className = 'status-badge ready';
     }
-    // Apply current zoom level to newly loaded webview
-    try { webview.setZoomLevel(currentZoomLevel); } catch (e) { /* ok */ }
+
+    // 应用当前面板或全局的缩放档位
+    const panelIndex = panel ? parseInt(panel.dataset.index, 10) : -1;
+    const zoomIndex = panelIndex >= 0
+      ? (panelZoomIndexMap.get(panelIndex) ?? globalZoomIndex)
+      : globalZoomIndex;
+    safeSetZoom(webview, ZOOM_LEVELS[zoomIndex]);
   });
 
   webview.addEventListener('did-fail-load', () => {
@@ -588,32 +765,76 @@ function updateExpandIcon(panel, isExpanded) {
 }
 
 // ─── Zoom Controls ──────────────────────────────────────────
+// 支持全局缩放与面板级独立缩放：
+// - 鼠标悬停或聚焦某个面板时，Ctrl/Cmd +/- 仅缩放该面板
+// - 未命中任何面板时，回退到同时缩放所有面板
 
-let currentZoomLevel = 0; // Electron zoom levels
+let globalZoomIndex = 6; // 默认 100%（ZOOM_LEVELS 索引）
 const ZOOM_LEVELS = [-3, -2.5, -2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3];
-let currentZoomIndex = 6; // Start at 0 (100%)
+const panelZoomIndexMap = new Map(); // panelIndex -> zoomIndex
+
+/** 安全设置 webview 缩放，未 ready 时静默失败 */
+function safeSetZoom(webview, level) {
+  try {
+    webview.setZoomLevel(level);
+  } catch (e) {
+    // webview 未 ready 时会抛异常，dom-ready 时会再次应用
+  }
+}
+
+/** 获取当前缩放目标面板索引：悬停优先，其次焦点 */
+function getTargetPanelIndex() {
+  const hovered = document.querySelector('.panel[data-hovered="true"]');
+  if (hovered) return parseInt(hovered.dataset.index, 10);
+
+  const active = document.querySelector('.panel.active');
+  if (active) return parseInt(active.dataset.index, 10);
+
+  return -1;
+}
+
+/** 根据 panel 索引获取对应 webview */
+function getPanelWebview(panelIndex) {
+  const panel = panelsGrid.querySelector(`.panel[data-index="${panelIndex}"]`);
+  return panel ? panel.querySelector('webview') : null;
+}
 
 function applyZoom(delta) {
-  const newIndex = currentZoomIndex + delta;
-  if (newIndex < 0 || newIndex >= ZOOM_LEVELS.length) return;
+  const targetIndex = getTargetPanelIndex();
 
-  currentZoomIndex = newIndex;
-  currentZoomLevel = ZOOM_LEVELS[newIndex];
+  if (targetIndex >= 0) {
+    // 面板级缩放
+    const currentIdx = panelZoomIndexMap.get(targetIndex) ?? globalZoomIndex;
+    const newIndex = currentIdx + delta;
+    if (newIndex < 0 || newIndex >= ZOOM_LEVELS.length) return;
 
-  getWebviews().forEach((wv) => {
-    try { wv.setZoomLevel(currentZoomLevel); } catch (e) { /* ok */ }
-  });
+    panelZoomIndexMap.set(targetIndex, newIndex);
+    const wv = getPanelWebview(targetIndex);
+    if (wv) safeSetZoom(wv, ZOOM_LEVELS[newIndex]);
+  } else {
+    // 全局缩放
+    const newIndex = globalZoomIndex + delta;
+    if (newIndex < 0 || newIndex >= ZOOM_LEVELS.length) return;
+
+    globalZoomIndex = newIndex;
+    getWebviews().forEach((wv) => safeSetZoom(wv, ZOOM_LEVELS[newIndex]));
+  }
 
   updateZoomIndicator();
 }
 
 function resetZoom() {
-  currentZoomIndex = 6;
-  currentZoomLevel = 0;
+  const targetIndex = getTargetPanelIndex();
 
-  getWebviews().forEach((wv) => {
-    try { wv.setZoomLevel(0); } catch (e) { /* ok */ }
-  });
+  if (targetIndex >= 0) {
+    panelZoomIndexMap.set(targetIndex, 6);
+    const wv = getPanelWebview(targetIndex);
+    if (wv) safeSetZoom(wv, 0);
+  } else {
+    globalZoomIndex = 6;
+    panelZoomIndexMap.clear();
+    getWebviews().forEach((wv) => safeSetZoom(wv, 0));
+  }
 
   updateZoomIndicator();
 }
@@ -622,7 +843,12 @@ function updateZoomIndicator() {
   const indicator = document.getElementById('zoom-indicator');
   if (!indicator) return;
 
-  const percent = Math.round(Math.pow(1.2, currentZoomLevel) * 100);
+  const targetIndex = getTargetPanelIndex();
+  const zoomIndex = targetIndex >= 0
+    ? (panelZoomIndexMap.get(targetIndex) ?? globalZoomIndex)
+    : globalZoomIndex;
+
+  const percent = Math.round(Math.pow(1.2, ZOOM_LEVELS[zoomIndex]) * 100);
   indicator.textContent = `${percent}%`;
   indicator.classList.add('visible');
 
@@ -630,6 +856,38 @@ function updateZoomIndicator() {
   indicator._timeout = setTimeout(() => {
     indicator.classList.remove('visible');
   }, 1500);
+}
+
+/** 根据 webview 的 WebContents ID 找到对应面板并缩放 */
+function applyZoomToWebview(webviewId, delta) {
+  const wv = Array.from(getWebviews()).find((w) => w.getWebContentsId() === webviewId);
+  if (!wv) return;
+
+  const panel = wv.closest('.panel');
+  const panelIndex = panel ? parseInt(panel.dataset.index, 10) : -1;
+  if (panelIndex < 0) return;
+
+  const currentIdx = panelZoomIndexMap.get(panelIndex) ?? globalZoomIndex;
+  const newIndex = currentIdx + delta;
+  if (newIndex < 0 || newIndex >= ZOOM_LEVELS.length) return;
+
+  panelZoomIndexMap.set(panelIndex, newIndex);
+  safeSetZoom(wv, ZOOM_LEVELS[newIndex]);
+  updateZoomIndicator();
+}
+
+/** 根据 webview 的 WebContents ID 重置对应面板缩放 */
+function resetZoomToWebview(webviewId) {
+  const wv = Array.from(getWebviews()).find((w) => w.getWebContentsId() === webviewId);
+  if (!wv) return;
+
+  const panel = wv.closest('.panel');
+  const panelIndex = panel ? parseInt(panel.dataset.index, 10) : -1;
+  if (panelIndex < 0) return;
+
+  panelZoomIndexMap.set(panelIndex, 6);
+  safeSetZoom(wv, 0);
+  updateZoomIndicator();
 }
 
 // ─── Source Picker Modal ────────────────────────────────────
@@ -646,7 +904,7 @@ function showSourcePicker(panelIndex) {
       <div class="source-option ${isCurrentPanel ? 'current' : ''} ${isActive && !isCurrentPanel ? 'active-elsewhere' : ''}"
            data-source-id="${id}">
         <div class="source-option-header">
-          <span class="source-option-dot" style="background: ${config.color};"></span>
+          <img class="source-option-dot" src="${config.logo || ''}" alt="">
           <span class="source-option-name">${config.name}</span>
           <span class="source-option-type">${config.type}</span>
         </div>
@@ -735,7 +993,8 @@ document.querySelectorAll('.preset-btn').forEach((btn) => {
  * Retries up to maxRetries times if the input element is not found yet.
  */
 async function fillWebview(webview, query, maxRetries = 3) {
-  const script = buildFillScript(query);
+  const preferBottom = isLLMSource(webview.id);
+  const script = buildFillScript(query, { preferBottom, sourceId: webview.id });
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
@@ -1099,6 +1358,16 @@ reloadAllBtn.addEventListener('click', () => {
   });
 });
 
+// 一键为所有 LLM 源新建对话
+const btnNewChat = document.getElementById('btn-new-chat');
+if (btnNewChat) {
+  btnNewChat.addEventListener('click', () => {
+    getWebviews().forEach((wv) => {
+      if (isLLMSource(wv.id)) triggerNewChat(wv);
+    });
+  });
+}
+
 // ─── Keyboard Shortcuts ─────────────────────────────────────
 
 document.addEventListener('keydown', (e) => {
@@ -1145,10 +1414,30 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+/** 监听鼠标进出面板，用于判定缩放目标 */
+function initPanelHoverTracking() {
+  panelsGrid.addEventListener('mouseenter', (e) => {
+    const panel = e.target.closest('.panel');
+    if (panel) panel.dataset.hovered = 'true';
+  }, true);
+
+  panelsGrid.addEventListener('mouseleave', (e) => {
+    const panel = e.target.closest('.panel');
+    if (panel) panel.dataset.hovered = 'false';
+  }, true);
+}
+
 // ─── Initialize ─────────────────────────────────────────────
 
 function init() {
   renderAllPanels();
+  initPanelHoverTracking();
+
+  // 注册来自 webview 的缩放快捷键转发
+  window.electronAPI.onWebviewZoomIn(({ webviewId }) => applyZoomToWebview(webviewId, 1));
+  window.electronAPI.onWebviewZoomOut(({ webviewId }) => applyZoomToWebview(webviewId, -1));
+  window.electronAPI.onWebviewZoomReset(({ webviewId }) => resetZoomToWebview(webviewId));
+
   mainSearch.focus();
 }
 

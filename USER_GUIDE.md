@@ -138,15 +138,26 @@ npm run dev
 
 每个面板右上角都有一个 **刷新按钮**（圆形箭头图标），可以单独刷新该面板的信息源，不影响其他面板。
 
-### 全局刷新
+### 外部链接阅读器
 
-点击顶部工具栏的 **全部刷新按钮**，可以同时刷新所有面板。
+在任意信息源面板中点击外部链接时，3for 会打开一个独立的 **Reader 阅读器窗口**，而不是在当前面板跳转：
+
+- 支持多标签页，可同时打开多个外部链接
+- 每个标签页是一个独立的 webview
+- 支持复制当前页面链接、用系统默认浏览器打开、页面内查找（Ctrl/Cmd + F）
+- 关闭阅读器窗口后，再次点击外部链接会自动重新打开
+
+### 一键新建对话
+
+点击顶部工具栏的 **"为所有 LLM 新建对话"** 按钮，应用会同时为所有 LLM 类型信息源（ChatGPT、Doubao、Kimi、Gemini、Grok）触发新建对话操作，方便在开始新一轮问题前清空上下文。
+
+> **注意**：该按钮只对 LLM 源生效，搜索引擎和社区源不会受影响。
 
 ### 缩放控制
 
-- **Ctrl + +** (Windows/Linux) 或 **Cmd + +** (macOS)：放大所有面板
-- **Ctrl + -** (Windows/Linux) 或 **Cmd + -** (macOS)：缩小所有面板
-- **Ctrl + 0** (Windows/Linux) 或 **Cmd + 0** (macOS)：重置为 100%
+- **Ctrl + +** (Windows/Linux) 或 **Cmd + +** (macOS)：放大当前鼠标悬停或键盘聚焦的面板；如果没有任何面板被瞄准，则放大所有面板
+- **Ctrl + -** (Windows/Linux) 或 **Cmd + -** (macOS)：缩小当前鼠标悬停或键盘聚焦的面板；如果没有任何面板被瞄准，则缩小所有面板
+- **Ctrl + 0** (Windows/Linux) 或 **Cmd + 0** (macOS)：重置当前瞄准面板的缩放；如果没有任何面板被瞄准，则重置所有面板
 
 缩放时右上角会短暂显示当前缩放百分比。
 
@@ -154,7 +165,7 @@ npm run dev
 
 ## 信息源说明
 
-3for 目前支持 **7 个信息源**，默认显示 4 个，可通过切换按钮自由组合：
+3for 目前支持 **8 个信息源**，默认显示 4 个，可通过切换按钮自由组合：
 
 | 信息源 | 类型 | 独特价值 | 网址 |
 |--------|------|----------|------|
@@ -165,6 +176,7 @@ npm run dev
 | **Metaso（秘塔搜索）** | AI 搜索 | 学术搜索、知识图谱、结构化知识检索 | metaso.cn |
 | **Bing** | 搜索引擎 | 广泛网页覆盖、实时新闻资讯、多语言结果 | bing.com |
 | **Gemini** | LLM | Google 多模态 AI、实时联网搜索、长上下文理解 | gemini.google.com |
+| **Grok** | LLM | xAI 实时搜索、长推理、少过滤响应 | grok.com |
 
 ### 推荐组合
 
@@ -172,6 +184,7 @@ npm run dev
 - **产品调研**：ChatGPT + Xiaohongshu + Bing + Doubao
 - **学术查询**：Kimi + Metaso + Gemini + ChatGPT
 - **全面搜索**：ChatGPT + Gemini + Bing + Xiaohongshu
+- **多 LLM 对比**：ChatGPT + Doubao + Kimi + Grok
 
 ---
 
@@ -262,12 +275,12 @@ AI 总结包含两部分：
 | `Cmd + L` | 聚焦搜索栏 | macOS |
 | `Ctrl + R` | 刷新所有面板 | Windows / Linux |
 | `Cmd + R` | 刷新所有面板 | macOS |
-| `Ctrl + +` | 放大所有面板 | Windows / Linux |
-| `Cmd + +` | 放大所有面板 | macOS |
-| `Ctrl + -` | 缩小所有面板 | Windows / Linux |
-| `Cmd + -` | 缩小所有面板 | macOS |
-| `Ctrl + 0` | 重置缩放为 100% | Windows / Linux |
-| `Cmd + 0` | 重置缩放为 100% | macOS |
+| `Ctrl + +` | 放大当前瞄准面板（未命中则放大全部） | Windows / Linux |
+| `Cmd + +` | 放大当前瞄准面板（未命中则放大全部） | macOS |
+| `Ctrl + -` | 缩小当前瞄准面板（未命中则缩小全部） | Windows / Linux |
+| `Cmd + -` | 缩小当前瞄准面板（未命中则缩小全部） | macOS |
+| `Ctrl + 0` | 重置当前瞄准面板缩放（未命中则重置全部） | Windows / Linux |
+| `Cmd + 0` | 重置当前瞄准面板缩放（未命中则重置全部） | macOS |
 | `Escape` | 取消聚焦 / 关闭弹窗 / 退出全屏 | 全平台 |
 
 ---
@@ -280,7 +293,14 @@ A: 请检查你的网络连接。某些信息源可能需要特定的网络环�
 
 ### Q: 搜索后信息源没有自动输入问题？
 
-A: 自动填充依赖于各网站的页面结构。如果某个网站更新了页面，填充脚本可能需要调整。你可以手动在对应面板中输入问题。
+A: 自动填充依赖于各网站的页面结构。3for 为 Grok 等已知结构的源维护了特征选择器，但其他源仍依赖位置和可见性启发式。如果某个网站更新了页面，填充脚本可能需要调整。你可以：
+
+1. 等待页面完全加载后再搜索
+2. 手动在对应面板中输入问题
+3. 查看 DevTools 中的 `[3for]` 日志，确认是否有 `no-input-found` 或异常信息
+4. 参考 `doc/问题注入逻辑.md` 了解定位策略
+
+如果某个源长期失效，可以在 issue 中反馈具体的页面变化。
 
 ### Q: AI 总结报错 "未配置 API Key"？
 
@@ -319,11 +339,22 @@ A: 替换项目目录中的代码文件（main.js、preload.js、src/ 目录）�
 ├── preload.js           # 安全桥接（IPC 通信接口）
 ├── package.json         # 项目配置
 ├── llm-config.json      # LLM 供应商配置（自动生成）
-├── deepseek-api         # 旧版 DeepSeek API Key（可选，向后兼容）
+├── deepseek-api         # 旧版 DeepSeek API Key（向后兼容，推荐迁移到 llm-config.json）
+├── README.md            # 项目介绍
+├── USER_GUIDE.md        # 本文件
+├── CLAUDE.md            # 项目记忆与交互规则
+├── MEMORY.md            # 长期记忆
+├── memory/              # 每日记忆
+├── doc/                 # 技术文档
+│   └── 问题注入逻辑.md
+├── logo/                # 各信息源 logo
 └── src/
     ├── index.html       # 界面结构
     ├── renderer.js      # 核心逻辑（搜索、填充、总结、UI 交互）
-    └── styles.css       # 样式（暗色主题）
+    ├── styles.css       # 样式（暗色主题）
+    ├── reader.html      # 外部链接阅读器窗口
+    ├── reader.css       # 阅读器样式
+    └── reader.js        # 阅读器多标签管理
 ```
 
 ---

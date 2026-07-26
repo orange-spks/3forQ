@@ -859,10 +859,13 @@ webview {
 }
 
 .source-option-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
   flex-shrink: 0;
+  object-fit: contain;
+  background: #fff;
+  border: 1px solid var(--border);
 }
 
 .source-option-name {

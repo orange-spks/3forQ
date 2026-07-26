@@ -9,7 +9,7 @@
  * Kimi/Moonshot, Guiji, OpenAI, etc.). User sets base URL + API key + model.
  */
 
-const { app, BrowserWindow, ipcMain, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, shell, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -229,6 +229,147 @@ function createWindow() {
     mainWindow = null;
   });
 }
+
+// ─── Reader Window ──────────────────────────────────────────
+// 单例多标签阅读器，用于打开源 webview 中的外部链接
+
+let readerWindow = null;
+
+function getOrCreateReaderWindow() {
+  if (readerWindow && !readerWindow.isDestroyed()) {
+    if (readerWindow.isMinimized()) readerWindow.restore();
+    readerWindow.focus();
+    return readerWindow;
+  }
+
+  readerWindow = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    minWidth: 600,
+    minHeight: 400,
+    title: '3for Reader',
+    backgroundColor: '#0f0f0f',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      webviewTag: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  readerWindow.loadFile(path.join(__dirname, 'src', 'reader.html'));
+
+  readerWindow.on('closed', () => {
+    readerWindow = null;
+  });
+
+  return readerWindow;
+}
+
+async function openReaderWindow(url) {
+  if (!url || !url.startsWith('http')) return;
+
+  const win = getOrCreateReaderWindow();
+  const sendAddTab = () => win.webContents.send('reader-add-tab', url);
+
+  if (win.webContents.isLoadingMainFrame()) {
+    win.webContents.once('did-finish-load', sendAddTab);
+  } else {
+    sendAddTab();
+  }
+}
+
+ipcMain.handle('open-reader', (_event, url) => openReaderWindow(url));
+
+ipcMain.handle('copy-text', async (_event, text) => {
+  clipboard.writeText(text || '');
+});
+
+ipcMain.handle('open-external', async (_event, url) => {
+  if (url && url.startsWith('http')) {
+    await shell.openExternal(url);
+  }
+});
+
+// ─── Intercept webview keyboard / navigation ────────────────
+// webview 聚焦时，渲染进程无法直接收到其内部的键盘事件，
+// 因此在主进程统一拦截缩放、打开新窗口和外部跳转。
+
+function sendToOwnerWindow(contents, channel, ...args) {
+  const win = contents.getOwnerBrowserWindow();
+  if (win && !win.isDestroyed()) {
+    win.webContents.send(channel, ...args);
+  }
+}
+
+function normalizeHost(host) {
+  return (host || '').replace(/^www\./, '').toLowerCase();
+}
+
+app.on('web-contents-created', (_event, contents) => {
+  if (contents.getType() !== 'webview') return;
+
+  const owner = contents.getOwnerBrowserWindow();
+  if (!owner) return;
+
+  // 所有新窗口请求都统一转为阅读器标签（源面板）或阅读器内新标签
+  contents.setWindowOpenHandler((details) => {
+    const url = details.url;
+    if (url && url.startsWith('http')) {
+      if (owner === readerWindow) {
+        owner.webContents.send('reader-add-tab', url);
+      } else {
+        openReaderWindow(url);
+      }
+    }
+    return { action: 'deny' };
+  });
+
+  // 外部域名跳转也进入阅读器；阅读器内部 webview 的跳转不拦截
+  contents.on('will-navigate', (event, url) => {
+    if (owner === readerWindow) return;
+
+    const currentUrl = contents.getURL();
+    if (!currentUrl.startsWith('http') || !url.startsWith('http')) return;
+
+    try {
+      const currentHost = normalizeHost(new URL(currentUrl).host);
+      const newHost = normalizeHost(new URL(url).host);
+      if (currentHost && newHost && currentHost !== newHost) {
+        event.preventDefault();
+        openReaderWindow(url);
+      }
+    } catch (e) {
+      // ignore malformed urls
+    }
+  });
+
+  // 转发缩放快捷键与阅读器查找快捷键
+  contents.on('before-input-event', (event, input) => {
+    const isMod = input.control || input.meta;
+    if (!isMod) return;
+
+    if (input.key === '=' || input.key === '+') {
+      event.preventDefault();
+      sendToOwnerWindow(contents, 'webview-zoom-in', { webviewId: contents.id });
+      return;
+    }
+    if (input.key === '-') {
+      event.preventDefault();
+      sendToOwnerWindow(contents, 'webview-zoom-out', { webviewId: contents.id });
+      return;
+    }
+    if (input.key === '0') {
+      event.preventDefault();
+      sendToOwnerWindow(contents, 'webview-zoom-reset', { webviewId: contents.id });
+      return;
+    }
+    if (input.key === 'f' && owner === readerWindow) {
+      event.preventDefault();
+      sendToOwnerWindow(contents, 'reader-focus-find');
+    }
+  });
+});
 
 app.whenReady().then(() => {
   setupMenu();
