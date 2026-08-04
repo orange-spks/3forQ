@@ -1375,7 +1375,8 @@ btnSaveSettings.addEventListener('click', saveSettings);
 
 // Main search bar: Enter to broadcast
 mainSearch.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
+  // 忽略中文输入法组合过程中的 Enter（用户用 Enter 确认英文输入时不应搜索）
+  if (e.key === 'Enter' && !e.isComposing) {
     e.preventDefault();
     broadcastSearch(mainSearch.value.trim());
   }
