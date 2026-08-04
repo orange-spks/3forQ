@@ -312,6 +312,7 @@ function buildFillScript(query, { preferBottom = false, sourceId = null } = {}) 
     // 对 Grok 等已知结构的源，优先用特征选择器命中真正的 prompt 输入框，
     // 避免被顶部/侧边的“搜索已有对话”框干扰。
     let input = null;
+
     if (sourceId === 'grok') {
       const grokSelectors = [
         'textarea[placeholder*="你想知道什么"]',
@@ -333,6 +334,23 @@ function buildFillScript(query, { preferBottom = false, sourceId = null } = {}) 
       }
     }
 
+    // 小红书：首页搜索区域由多个叠加的 textarea.textarea 组成，
+    // 一个 placeholder 是"搜索小红书"，另一个是动态推荐词。
+    // 先确定主输入框，后续统一填充并提交。
+    let xhsInputs = [];
+    if (sourceId === 'xiaohongshu' && !input) {
+      xhsInputs = Array.from(document.querySelectorAll('textarea.textarea'))
+        .filter((el) => {
+          const rect = el.getBoundingClientRect();
+          return rect.width > 100 && rect.height > 0 && el.offsetParent !== null;
+        });
+
+      if (xhsInputs.length > 0) {
+        // 优先用 placeholder 不是"搜索小红书"的动态推荐 textarea 作为主输入框
+        input = xhsInputs.find((el) => el.getAttribute('placeholder') !== '搜索小红书') || xhsInputs[0];
+      }
+    }
+
     /* ── Step 1: Find the search/prompt input element ── */
     // LLM 源的聊天输入通常是 textarea/contenteditable；把 input[type="text"] 置后，
     // 避免 Grok 顶部“搜索已有对话”的普通输入框被优先命中。
@@ -345,12 +363,14 @@ function buildFillScript(query, { preferBottom = false, sourceId = null } = {}) 
           'input:not([type])',
         ]
       : [
+          // 非 LLM 源（搜索/社区）的搜索框通常是 <input>，优先匹配 input，
+          // 避免把评论、发布等 textarea / contenteditable 区域误当成搜索框。
+          'input[type="search"]',
+          'input[type="text"]',
+          'input:not([type])',
           'textarea',
           '[contenteditable="true"]',
           'div[role="textbox"]',
-          'input[type="text"]',
-          'input[type="search"]',
-          'input:not([type])',
         ];
 
     function isSearchLike(el) {
@@ -428,10 +448,80 @@ function buildFillScript(query, { preferBottom = false, sourceId = null } = {}) 
 
     if (!input) return { filled: false, reason: 'no-input-found' };
 
-    /* ── Step 2: Fill the input ── */
+    /* ── Step 2 & 3: Fill and submit ── */
+    // 小红书：搜索区域有多个叠加 textarea，全部填一遍避免落到装饰层，
+    // 并在父容器内找搜索按钮（svg 图标）点击，同时兜底派发 Enter。
+    if (sourceId === 'xiaohongshu') {
+      const visibleXhsInputs = xhsInputs.length > 0
+        ? xhsInputs
+        : Array.from(document.querySelectorAll('textarea.textarea'))
+            .filter((el) => {
+              const rect = el.getBoundingClientRect();
+              return rect.width > 100 && rect.height > 0 && el.offsetParent !== null;
+            });
+
+      visibleXhsInputs.forEach((el) => fillInput(el, query));
+
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          try {
+            let submitted = false;
+            const primary = input;
+            const parent = primary.closest('form') || primary.parentElement;
+
+            if (parent) {
+              // 策略 A：点击父容器内的 svg 图标（通常是搜索按钮）
+              const svgs = parent.querySelectorAll('svg');
+              for (const svg of svgs) {
+                const btn = svg.closest('button, a, div[role="button"]');
+                if (btn && btn.offsetParent !== null) {
+                  btn.click();
+                  submitted = true;
+                  break;
+                }
+              }
+
+              // 策略 B：找父容器内文本或 aria-label 含"搜索"的按钮
+              if (!submitted) {
+                const buttons = parent.querySelectorAll('button, a, div[role="button"]');
+                for (const btn of buttons) {
+                  const text = (btn.textContent || '').trim().toLowerCase();
+                  const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+                  if (text.includes('搜索') || text.includes('search') ||
+                      ariaLabel.includes('搜索') || ariaLabel.includes('search')) {
+                    btn.click();
+                    submitted = true;
+                    break;
+                  }
+                }
+              }
+            }
+
+            // 策略 C：在所有已填写的 textarea 上派发 Enter
+            visibleXhsInputs.forEach((el) => {
+              el.dispatchEvent(new KeyboardEvent('keydown', {
+                key: 'Enter', code: 'Enter', keyCode: 13,
+                which: 13, bubbles: true, cancelable: true,
+              }));
+              setTimeout(() => {
+                el.dispatchEvent(new KeyboardEvent('keyup', {
+                  key: 'Enter', code: 'Enter', keyCode: 13,
+                  which: 13, bubbles: true, cancelable: true,
+                }));
+              }, 50);
+            });
+
+            resolve({ filled: true, submitted });
+          } catch (submitErr) {
+            resolve({ filled: true, submitted: false, submitError: submitErr.message });
+          }
+        }, 500);
+      });
+    }
+
+    // 其他源：正常填充并提交
     fillInput(input, query);
 
-    /* ── Step 3: Submit (after a short delay to let the UI react) ── */
     return new Promise((resolve) => {
       setTimeout(() => {
         try {
