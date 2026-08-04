@@ -15,6 +15,17 @@ const fs = require('fs');
 
 let mainWindow;
 
+// ─── Application Icon ───────────────────────────────────────
+// 使用 logo/3forQ-logo.png 作为窗口图标；macOS 额外设置 Dock 图标。
+// .icns / .ico 已生成到 logo/ 目录，供后续打包工具（electron-builder / forge）使用。
+const APP_ICON_PATH = path.join(__dirname, 'logo', '3forQ-logo.png');
+
+function setApplicationIcon() {
+  if (process.platform === 'darwin' && app.dock) {
+    app.dock.setIcon(APP_ICON_PATH);
+  }
+}
+
 // ─── LLM Configuration ──────────────────────────────────────
 const CONFIG_PATH = path.join(__dirname, 'llm-config.json');
 const LEGACY_KEY_PATH = path.join(__dirname, 'deepseek-api');
@@ -209,6 +220,7 @@ function createWindow() {
     minWidth: 1024,
     minHeight: 700,
     title: '3for - Multi-Source Search',
+    icon: APP_ICON_PATH,
     backgroundColor: '#0f0f0f',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -373,6 +385,7 @@ app.on('web-contents-created', (_event, contents) => {
 
 app.whenReady().then(() => {
   setupMenu();
+  setApplicationIcon();
   createWindow();
 });
 
