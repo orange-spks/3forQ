@@ -70,6 +70,18 @@ function saveLLMConfig() {
   }
 }
 
+/**
+ * Ensure the configured base URL points to the chat completions endpoint.
+ * Users may paste either the API base URL (e.g. https://api.siliconflow.cn/v1)
+ * or the full endpoint URL (e.g. https://api.deepseek.com/chat/completions).
+ */
+function normalizeChatCompletionsUrl(baseUrl) {
+  const url = (baseUrl || '').trim().replace(/\/+$/, '');
+  if (!url) return '';
+  if (url.endsWith('/chat/completions')) return url;
+  return `${url}/chat/completions`;
+}
+
 loadLLMConfig();
 
 // ─── Application Menu (important for Windows UX) ────────────
@@ -143,7 +155,7 @@ ipcMain.handle('summarize', async (_event, { content }) => {
   const timeout = setTimeout(() => controller.abort(), 120000);
 
   try {
-    const response = await fetch(llmConfig.baseUrl, {
+    const response = await fetch(normalizeChatCompletionsUrl(llmConfig.baseUrl), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

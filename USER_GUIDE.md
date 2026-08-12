@@ -231,7 +231,7 @@ AI 总结包含两部分：
 
 | 配置项 | 说明 | 示例 |
 |--------|------|------|
-| **API Base URL** | API 请求地址（包含完整路径） | `https://api.deepseek.com/chat/completions` |
+| **API Base URL** | API 请求地址，支持完整路径或 base URL（程序会自动补全 `/chat/completions`） | `https://api.siliconflow.cn/v1` |
 | **API Key** | 你的 API 密钥 | `sk-xxxxxxxxxxxxxxxx` |
 | **模型名称** | 使用的模型标识 | `deepseek-chat` |
 
@@ -244,7 +244,7 @@ AI 总结包含两部分：
 | **DeepSeek** | `https://api.deepseek.com/chat/completions` | `deepseek-chat` |
 | **通义千问** | `https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions` | `qwen-turbo` |
 | **Kimi/Moonshot** | `https://api.moonshot.cn/v1/chat/completions` | `moonshot-v1-8k` |
-| **轨迹流动** | `https://api.guiji.ai/v1/chat/completions` | `guiji-chat` |
+| **硅基流动** | `https://api.siliconflow.cn/v1/chat/completions` | `deepseek-ai/DeepSeek-V4-Flash` |
 | **OpenAI** | `https://api.openai.com/v1/chat/completions` | `gpt-4o` |
 
 ### 使用步骤

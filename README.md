@@ -109,7 +109,7 @@
 
 - **Node.js** >= 18
 - **npm** >= 9
-- **LLM API Key** — 支持 DeepSeek、通义千问、Kimi/Moonshot、轨迹流动、OpenAI 等任何 OpenAI 兼容 API
+- **LLM API Key** — 支持 DeepSeek、通义千问、Kimi/Moonshot、硅基流动、OpenAI 等任何 OpenAI 兼容 API
 
 ### 安装和运行
 
@@ -205,7 +205,7 @@ npm run dev
 - **DeepSeek**：`https://api.deepseek.com/chat/completions` / `deepseek-chat`
 - **通义千问**：`https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions` / `qwen-turbo`
 - **Kimi/Moonshot**：`https://api.moonshot.cn/v1/chat/completions` / `moonshot-v1-8k`
-- **轨迹流动**：`https://api.guiji.ai/v1/chat/completions` / `guiji-chat`
+- **硅基流动**：`https://api.siliconflow.cn/v1/chat/completions` / `deepseek-ai/DeepSeek-V4-Flash`
 - **OpenAI**：`https://api.openai.com/v1/chat/completions` / `gpt-4o`
 
 用户只需填写 Base URL、API Key 和模型名称即可。设置保存在 `llm-config.json` 文件中。旧版 `deepseek-api` 文件仍然兼容（自动迁移），建议新用户直接使用设置面板配置。
@@ -254,7 +254,7 @@ Webview 使用 `partition="persist:sources"`，将 Cookie、localStorage 和 Ind
 - [x] **外部链接阅读器** — 在独立多标签窗口中打开 webview 外部链接
 - [x] **一键新建对话** — 同时为所有 LLM 源触发新建对话
 - [x] **优化总结提示词** — 综合多源结论 + 突出各来源独特价值
-- [x] **可配置 LLM 供应商** — 支持 OpenAI 兼容 API（DeepSeek、千问、Kimi、轨迹流动等），用户自填 base URL + API key
+- [x] **可配置 LLM 供应商** — 支持 OpenAI 兼容 API（DeepSeek、千问、Kimi、硅基流动等），用户自填 base URL + API key
 - [x] **Windows 适配** — 完整支持 Windows 平台（快捷键、菜单、字体、缩放）
 - [x] **使用手册** — 完整的使用指南文档（USER_GUIDE.md）
 - [x] **技术文档** — 问题注入逻辑文档（doc/问题注入逻辑.md）
