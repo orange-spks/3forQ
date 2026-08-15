@@ -24,3 +24,6 @@ AGENT.md
 
 # 归档
 archive/
+
+# 网站 DOM 快照（仅本地留档，用于排查注入问题）
+doc/xhs-dom-*.html
