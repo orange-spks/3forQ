@@ -216,6 +216,9 @@ ipcMain.handle('summarize', async (_event, { content }) => {
 // ─── IPC: LLM Config Management ─────────────────────────────
 ipcMain.handle('get-llm-config', () => ({ ...llmConfig }));
 
+// 渲染进程诊断日志转发到终端，便于排查 webview 注入问题
+ipcMain.on('debug-log', (_event, msg) => console.log(msg));
+
 ipcMain.handle('save-llm-config', (_event, config) => {
   if (config.baseUrl) llmConfig.baseUrl = config.baseUrl.trim();
   if (config.apiKey !== undefined) llmConfig.apiKey = config.apiKey.trim();

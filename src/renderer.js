@@ -125,6 +125,9 @@ const NEW_CHAT_ACTIONS = {
   doubao:  { method: 'shortcut', key: 'K', modifiers: ['shift', 'ctrlOrCmd'] },
   gemini:  { method: 'dom', selectorText: /new chat/i, fallbackUrl: 'https://gemini.google.com/app' },
   grok:    { method: 'dom', selectorText: /new chat/i, fallbackUrl: 'https://grok.com' },
+  // 小红书没有"新建会话"概念，语义为清空搜索框；
+  // 下次广播搜索时注入脚本会重新填充并提交
+  xiaohongshu: { method: 'clear-input' },
 };
 
 /** 将配置中的 ctrl/ctrlOrCmd 映射为 Electron 可识别的 modifier */
@@ -166,6 +169,29 @@ async function triggerNewChat(webview) {
       if (!clicked && action.fallbackUrl) {
         webview.loadURL(action.fallbackUrl);
       }
+    } else if (action.method === 'clear-input') {
+      // 清空可见的搜索输入框（原生 setter 赋值 + input 事件，兼容 Vue/React 响应式）
+      await webview.executeJavaScript(`
+        (() => {
+          const isVisible = (el) => {
+            const rect = el.getBoundingClientRect();
+            return rect.width > 100 && rect.height > 0 && el.offsetParent !== null;
+          };
+          const inputs = Array.from(document.querySelectorAll(
+            '#search-input-in-feeds, #search-input, textarea.textarea, input.search-input, input[type="search"], input[type="text"]'
+          )).filter(isVisible);
+          inputs.forEach((el) => {
+            el.focus();
+            const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+            const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+            setter.call(el, '');
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+            el.blur();
+          });
+          return inputs.length;
+        })()
+      `);
     }
   } catch (err) {
     console.warn('[3for] 新建对话失败:', sourceId, err.message);
@@ -334,21 +360,60 @@ function buildFillScript(query, { preferBottom = false, sourceId = null } = {}) 
       }
     }
 
-    // 小红书：首页搜索区域由多个叠加的 textarea.textarea 组成，
-    // 一个 placeholder 是"搜索小红书"，另一个是动态推荐词。
-    // 先确定主输入框，后续统一填充并提交。
+    // 小红书：首页搜索区域历史上由多个叠加的 textarea.textarea 组成，
+    // 改版后可能换成 input（placeholder 用覆盖层绘制，placeholder 属性为空）。
+    // 先按已知 class 匹配，失败则兜底收集所有可见 input/textarea。
     let xhsInputs = [];
     if (sourceId === 'xiaohongshu' && !input) {
-      xhsInputs = Array.from(document.querySelectorAll('textarea.textarea'))
-        .filter((el) => {
-          const rect = el.getBoundingClientRect();
-          return rect.width > 100 && rect.height > 0 && el.offsetParent !== null;
-        });
+      const isVisible = (el) => {
+        const rect = el.getBoundingClientRect();
+        return rect.width > 100 && rect.height > 0 && el.offsetParent !== null;
+      };
+      xhsInputs = Array.from(document.querySelectorAll('textarea.textarea, input.textarea'))
+        .filter(isVisible);
+
+      if (xhsInputs.length === 0) {
+        // 兜底：探索页可见输入框基本只有顶部搜索框，全部收集
+        xhsInputs = Array.from(
+          document.querySelectorAll('input[type="search"], input[type="text"], input:not([type]), textarea')
+        ).filter(isVisible);
+      }
 
       if (xhsInputs.length > 0) {
-        // 优先用 placeholder 不是"搜索小红书"的动态推荐 textarea 作为主输入框
-        input = xhsInputs.find((el) => el.getAttribute('placeholder') !== '搜索小红书') || xhsInputs[0];
+        // 低缩放 AI 布局：feeds 区大搜索框 #search-input-in-feeds 是主输入框，
+        // header 里的 #search-input 在 display:none 容器中，勿用（DOM 快照确认）
+        const inFeeds = document.getElementById('search-input-in-feeds');
+        if (inFeeds && xhsInputs.includes(inFeeds)) {
+          input = inFeeds;
+        } else {
+          // 优先用 placeholder 不是"搜索小红书"的动态推荐输入框作为主输入框
+          input = xhsInputs.find((el) => el.getAttribute('placeholder') !== '搜索小红书') || xhsInputs[0];
+        }
       }
+    }
+
+    // 诊断：收集页面上所有 textarea 的实际信息，便于排查小红书改版导致的选择器失效
+    let xhsDebug = null;
+    if (sourceId === 'xiaohongshu') {
+      xhsDebug = {
+        url: location.href,
+        readyState: document.readyState,
+        // 诊断：页面上所有 input/textarea 快照，便于确认改版后的真实结构
+        inputs: Array.from(document.querySelectorAll('input, textarea')).slice(0, 10).map((el) => {
+          const rect = el.getBoundingClientRect();
+          return {
+            tag: el.tagName.toLowerCase(),
+            type: el.getAttribute('type'),
+            className: String(el.className).slice(0, 80),
+            placeholder: el.getAttribute('placeholder'),
+            visible: el.offsetParent !== null,
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+          };
+        }),
+        matchedXhsCount: xhsInputs.length,
+        primaryPlaceholder: input ? (input.getAttribute('placeholder') || null) : null,
+      };
     }
 
     /* ── Step 1: Find the search/prompt input element ── */
@@ -446,74 +511,155 @@ function buildFillScript(query, { preferBottom = false, sourceId = null } = {}) 
            || document.querySelector('input[type="text"]');
     }
 
-    if (!input) return { filled: false, reason: 'no-input-found' };
+    if (!input) return { filled: false, reason: 'no-input-found', debug: xhsDebug || undefined };
 
     /* ── Step 2 & 3: Fill and submit ── */
-    // 小红书：搜索区域有多个叠加 textarea，全部填一遍避免落到装饰层，
-    // 并在父容器内找搜索按钮（svg 图标）点击，同时兜底派发 Enter。
+    // 小红书：所有候选输入框全部填一遍避免落到装饰层；
+    // 通用逻辑找到的 input 必须包含在内（改版后搜索框可能不再是 textarea.textarea）。
+    // 提交时在父容器内找搜索按钮（svg 图标）点击，同时兜底派发 Enter。
     if (sourceId === 'xiaohongshu') {
-      const visibleXhsInputs = xhsInputs.length > 0
-        ? xhsInputs
-        : Array.from(document.querySelectorAll('textarea.textarea'))
-            .filter((el) => {
-              const rect = el.getBoundingClientRect();
-              return rect.width > 100 && rect.height > 0 && el.offsetParent !== null;
-            });
+      const fillTargets = xhsInputs.includes(input) ? xhsInputs : xhsInputs.concat(input);
 
-      visibleXhsInputs.forEach((el) => fillInput(el, query));
+      fillTargets.forEach((el) => fillInput(el, query));
 
       return new Promise((resolve) => {
         setTimeout(() => {
           try {
             let submitted = false;
-            const primary = input;
-            const parent = primary.closest('form') || primary.parentElement;
+            let submitStrategy = null; // AB=搜索特征按钮，C=Enter(经 URL 观察确认)，D=URL 跳转
 
-            if (parent) {
-              // 策略 A：点击父容器内的 svg 图标（通常是搜索按钮）
-              const svgs = parent.querySelectorAll('svg');
-              for (const svg of svgs) {
-                const btn = svg.closest('button, a, div[role="button"]');
-                if (btn && btn.offsetParent !== null) {
-                  btn.click();
-                  submitted = true;
-                  break;
-                }
+            // SPA 可能在填充后重渲染搜索框，旧 DOM 引用会失效（parentElement 为 null）。
+            // 提交前重新收集可见输入框；旧引用仍有效则优先复用。
+            const isVisibleNow = (el) => {
+              const rect = el.getBoundingClientRect();
+              return rect.width > 100 && rect.height > 0 && el.offsetParent !== null;
+            };
+            const freshInputs = Array.from(
+              document.querySelectorAll('textarea.textarea, input.textarea, input.search-input, input[type="search"], input[type="text"], input:not([type]), textarea')
+            ).filter(isVisibleNow);
+            const primary = (input && input.isConnected)
+              ? input
+              : (freshInputs.find((el) => el.value === query) || freshInputs[0] || input);
+            const enterTargets = freshInputs.length > 0 ? freshInputs : fillTargets;
+
+            // 诊断：沿祖先链收集附近的可点击元素，用于定位真正的提交按钮，避免盲改
+            const ancestorChain = [];
+            const submitCandidates = [];
+            let ancestor = primary.closest('form') || primary.parentElement;
+            for (let level = 0; ancestor && level < 5; level++) {
+              ancestorChain.push(ancestor.tagName.toLowerCase() + '.' + String(ancestor.className).slice(0, 60));
+              const pool = ancestor.querySelectorAll('button, a, [role="button"], [class*="icon"], [class*="btn"], [class*="search"], [class*="Search"]');
+              for (const el of pool) {
+                if (submitCandidates.length >= 20) break;
+                submitCandidates.push({
+                  level,
+                  tag: el.tagName.toLowerCase(),
+                  className: String(el.className).slice(0, 60),
+                  text: (el.textContent || '').trim().slice(0, 20),
+                  ariaLabel: el.getAttribute('aria-label'),
+                  visible: el.offsetParent !== null,
+                  hasSvg: !!el.querySelector('svg'),
+                });
               }
+              ancestor = ancestor.parentElement;
+            }
+            if (xhsDebug) {
+              xhsDebug.primaryReconnected = primary !== input;
+              xhsDebug.ancestorChain = ancestorChain;
+              xhsDebug.submitCandidates = submitCandidates;
+            }
 
-              // 策略 B：找父容器内文本或 aria-label 含"搜索"的按钮
-              if (!submitted) {
-                const buttons = parent.querySelectorAll('button, a, div[role="button"]');
-                for (const btn of buttons) {
-                  const text = (btn.textContent || '').trim().toLowerCase();
-                  const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
-                  if (text.includes('搜索') || text.includes('search') ||
-                      ariaLabel.includes('搜索') || ariaLabel.includes('search')) {
-                    btn.click();
-                    submitted = true;
-                    break;
-                  }
-                }
+            // 策略 P（精确，DOM 快照确认的结构）：
+            // - 低缩放 AI 布局：.wendian-wrapper 内 div.submit-button-wrapper > img.submit-button
+            // - 高缩放布局：.input-box 内 div.search-icon 或 button.min-width-search-icon
+            // 这些不是 button/a/[role=button]，通用特征匹配会漏掉，必须精确命中。
+            const submitContainer = primary.closest('.wendian-wrapper')
+              || primary.closest('.input-box')
+              || primary.closest('header');
+            if (submitContainer) {
+              const preciseBtn = submitContainer.querySelector(
+                '.submit-button-wrapper, .search-icon, button.min-width-search-icon'
+              );
+              if (preciseBtn && preciseBtn.offsetParent !== null) {
+                preciseBtn.click();
+                submitted = true;
+                submitStrategy = 'P:precise-submit';
               }
             }
 
-            // 策略 C：在所有已填写的 textarea 上派发 Enter
-            visibleXhsInputs.forEach((el) => {
-              el.dispatchEvent(new KeyboardEvent('keydown', {
-                key: 'Enter', code: 'Enter', keyCode: 13,
-                which: 13, bubbles: true, cancelable: true,
-              }));
-              setTimeout(() => {
-                el.dispatchEvent(new KeyboardEvent('keyup', {
+            // 策略 A+B：沿祖先链向上最多 5 层，找 class/aria-label/文本含
+            // search/搜索 特征的可点击元素（放大镜或搜索按钮）。
+            // 跳过包含输入框自身的容器，避免误点包装层却误判成功。
+            ancestor = primary.closest('form') || primary.parentElement;
+            for (let level = 0; ancestor && level < 5 && !submitted; level++) {
+              const pool = ancestor.querySelectorAll('button, a, [role="button"], [class*="icon"], [class*="search"], [class*="Search"]');
+              for (const el of pool) {
+                if (el === primary || el.contains(primary)) continue;
+                if (el.offsetParent === null) continue;
+                const cls = String(el.className || '').toLowerCase();
+                const aria = (el.getAttribute('aria-label') || '').toLowerCase();
+                const text = (el.textContent || '').trim().toLowerCase().slice(0, 20);
+                const looksLikeSearch =
+                  cls.includes('search') || aria.includes('search') || aria.includes('搜索') ||
+                  text === '搜索' || text.includes('搜索');
+                if (!looksLikeSearch) continue;
+                const clickTarget = el.closest('button, a, [role="button"]') || el;
+                clickTarget.click();
+                submitted = true;
+                submitStrategy = 'AB:search-feature@L' + level;
+                break;
+              }
+              ancestor = ancestor.parentElement;
+            }
+
+            // 策略 C：在最新输入框上派发 Enter（宽屏多行框下可触发页内 AI 搜索）
+            if (!submitted) {
+              enterTargets.forEach((el) => {
+                el.dispatchEvent(new KeyboardEvent('keydown', {
                   key: 'Enter', code: 'Enter', keyCode: 13,
                   which: 13, bubbles: true, cancelable: true,
                 }));
-              }, 50);
-            });
+                setTimeout(() => {
+                  el.dispatchEvent(new KeyboardEvent('keyup', {
+                    key: 'Enter', code: 'Enter', keyCode: 13,
+                    which: 13, bubbles: true, cancelable: true,
+                  }));
+                }, 50);
+              });
+            }
 
-            resolve({ filled: true, submitted });
+            // 观察期：Enter 生效时小红书会 SPA 路由跳转到 search_result（带 AI 面板）。
+            // 等 1200ms 确认路由未变化才执行 D 直达跳转——直达 URL 加载的结果页
+            // 没有 AI 面板，过早跳转会覆盖页内搜索已产生的 AI 结果。
+            setTimeout(() => {
+              try {
+                if (!submitted && location.href.includes('search_result')) {
+                  submitted = true;
+                  submitStrategy = 'C:enter';
+                }
+
+                // 策略 D：确认页内提交无效后，直达跳转搜索结果页兜底。
+                // 延迟 400ms 是让 resolve 结果先回传渲染进程，避免页面卸载导致注入 Promise 异常。
+                if (!submitted) {
+                  submitted = true;
+                  submitStrategy = 'D:url-navigation';
+                  const target = 'https://www.xiaohongshu.com/search_result?keyword=' + encodeURIComponent(query);
+                  setTimeout(() => { window.location.href = target; }, 400);
+                }
+
+                resolve({
+                  filled: true,
+                  submitted,
+                  submitStrategy,
+                  filledCount: fillTargets.length,
+                  debug: xhsDebug || undefined,
+                });
+              } catch (observeErr) {
+                resolve({ filled: true, submitted: false, submitError: observeErr.message, debug: xhsDebug || undefined });
+              }
+            }, 1200);
           } catch (submitErr) {
-            resolve({ filled: true, submitted: false, submitError: submitErr.message });
+            resolve({ filled: true, submitted: false, submitError: submitErr.message, debug: xhsDebug || undefined });
           }
         }, 500);
       });
@@ -1090,6 +1236,11 @@ async function fillWebview(webview, query, maxRetries = 3) {
     try {
       const result = await webview.executeJavaScript(script);
 
+      // 小红书诊断：完整结果（含页面 textarea 快照）转发到终端日志
+      if (webview.id === 'xiaohongshu' && window.electronAPI?.debugLog) {
+        window.electronAPI.debugLog(`[3for:xhs] attempt ${attempt + 1}: ${JSON.stringify(result)}`);
+      }
+
       if (result && result.filled) {
         console.log(`[3for] ${webview.id}: filled successfully`, result);
         return result;
@@ -1449,12 +1600,12 @@ reloadAllBtn.addEventListener('click', () => {
   });
 });
 
-// 一键为所有 LLM 源新建对话
+// 一键新建会话：LLM 源触发新建对话，小红书清空搜索框（见 NEW_CHAT_ACTIONS 配置）
 const btnNewChat = document.getElementById('btn-new-chat');
 if (btnNewChat) {
   btnNewChat.addEventListener('click', () => {
     getWebviews().forEach((wv) => {
-      if (isLLMSource(wv.id)) triggerNewChat(wv);
+      if (NEW_CHAT_ACTIONS[wv.id]) triggerNewChat(wv);
     });
   });
 }

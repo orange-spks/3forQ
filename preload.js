@@ -45,6 +45,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   /** 使用系统默认浏览器打开链接 */
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
 
+  /** 渲染进程诊断日志转发到主进程（终端可见），用于排查 webview 注入问题 */
+  debugLog: (msg) => ipcRenderer.send('debug-log', msg),
+
   /** 阅读器窗口新增标签页的监听 */
   onReaderAddTab: (callback) => ipcRenderer.on('reader-add-tab', (_event, url) => callback(url)),
 
