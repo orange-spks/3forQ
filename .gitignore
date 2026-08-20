@@ -27,3 +27,5 @@ archive/
 
 # 网站 DOM 快照（仅本地留档，用于排查注入问题）
 doc/xhs-dom-*.html
+doc/豆包*.html
+doc/豆包*_files/
