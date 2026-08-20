@@ -529,6 +529,75 @@ webview {
   color: var(--text-primary);
 }
 
+/* 抽屉头部右侧按钮组（下载 / 关闭） */
+.drawer-header-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.drawer-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.drawer-icon-btn:hover {
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+
+.drawer-icon-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ─── Toast ─── */
+.toast-container {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toast {
+  max-width: 70vw;
+  padding: 9px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 13px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity var(--transition), transform var(--transition);
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.toast.toast-error {
+  border-color: var(--red);
+  color: var(--red);
+}
+
 /* ─── Drawer Body ─── */
 .drawer-body {
   flex: 1;

@@ -318,6 +318,30 @@ ipcMain.handle('open-external', async (_event, url) => {
   }
 });
 
+// 将 Markdown 内容写入系统默认下载目录；文件名冲突时自动追加 -1/-2 后缀
+ipcMain.handle('save-markdown', async (_event, { filename, content }) => {
+  try {
+    const downloadsDir = app.getPath('downloads');
+    // 清洗文件名中的非法字符（跨平台保守处理）
+    const safeName = String(filename || '3for-export')
+      .replace(/[\\/:*?"<>|]/g, '')
+      .trim() || '3for-export';
+
+    let finalPath = path.join(downloadsDir, `${safeName}.md`);
+    let counter = 1;
+    while (fs.existsSync(finalPath)) {
+      finalPath = path.join(downloadsDir, `${safeName}-${counter}.md`);
+      counter += 1;
+    }
+
+    fs.writeFileSync(finalPath, content, 'utf8');
+    return { success: true, path: finalPath };
+  } catch (err) {
+    console.error('[3for] save-markdown 失败:', err);
+    return { success: false, error: err.message };
+  }
+});
+
 // ─── Intercept webview keyboard / navigation ────────────────
 // webview 聚焦时，渲染进程无法直接收到其内部的键盘事件，
 // 因此在主进程统一拦截缩放、打开新窗口和外部跳转。

@@ -122,7 +122,14 @@ function isLLMSource(sourceId) {
 const NEW_CHAT_ACTIONS = {
   chatgpt: { method: 'shortcut', key: 'O', modifiers: ['shift', 'ctrlOrCmd'] },
   kimi:    { method: 'shortcut', key: 'K', modifiers: ['ctrlOrCmd'] },
-  doubao:  { method: 'shortcut', key: 'K', modifiers: ['shift', 'ctrlOrCmd'] },
+  // 豆包 2026-08 改版后 ⌘K 变成全局搜索弹窗、快捷键可被远程配置覆盖，
+  // 改为 DOM 点击侧边栏"新对话"按钮（data-testid 稳定钩子），失败则重新加载聊天首页
+  doubao:  {
+    method: 'dom',
+    selector: '[data-testid="create_conversation_button"]',
+    selectorText: /新对话/,
+    fallbackUrl: 'https://www.doubao.com/chat/',
+  },
   gemini:  { method: 'dom', selectorText: /new chat/i, fallbackUrl: 'https://gemini.google.com/app' },
   grok:    { method: 'dom', selectorText: /new chat/i, fallbackUrl: 'https://grok.com' },
   // 小红书没有"新建会话"概念，语义为清空搜索框；
@@ -153,15 +160,28 @@ async function triggerNewChat(webview) {
       webview.sendInputEvent({ type: 'keyDown', keyCode: action.key, modifiers: mods });
       webview.sendInputEvent({ type: 'keyUp', keyCode: action.key, modifiers: mods });
     } else if (action.method === 'dom') {
-      const selectorRegexStr = action.selectorText.toString();
+      const selectorRegexStr = action.selectorText ? action.selectorText.toString() : 'null';
+      const cssSelector = action.selector ? JSON.stringify(action.selector) : 'null';
       const clicked = await webview.executeJavaScript(`
         (() => {
+          // 优先用精确 CSS 选择器（data-testid 等稳定钩子）
+          const css = ${cssSelector};
+          if (css) {
+            const el = document.querySelector(css);
+            if (el) {
+              el.click();
+              return true;
+            }
+          }
+          // 兜底：按可见文本匹配按钮
           const regex = ${selectorRegexStr};
-          const buttons = Array.from(document.querySelectorAll('button, a, [role="button"]'));
-          const btn = buttons.find((b) => regex.test((b.textContent || b.innerText || '').trim()));
-          if (btn) {
-            btn.click();
-            return true;
+          if (regex) {
+            const buttons = Array.from(document.querySelectorAll('button, a, [role="button"]'));
+            const btn = buttons.find((b) => regex.test((b.textContent || b.innerText || '').trim()));
+            if (btn) {
+              btn.click();
+              return true;
+            }
           }
           return false;
         })()
@@ -357,6 +377,45 @@ function buildFillScript(query, { preferBottom = false, sourceId = null } = {}) 
             }
           }
         } catch (e) { /* continue */ }
+      }
+    }
+
+    // 豆包：2026-08 改版后输入框是 tiptap ProseMirror contenteditable，
+    // textContent 直接赋值不会同步编辑器内部状态（会被还原/发送按钮不激活），
+    // 必须走 execCommand('insertText') 原生输入管线，ProseMirror 才视为真实输入。
+    if (sourceId === 'doubao') {
+      // 新版 ⌘K 会打开全局搜索弹窗并夺走焦点；填充前先尝试关闭可能残留的弹窗
+      try {
+        const escOpts = { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true };
+        (document.activeElement || document.body).dispatchEvent(new KeyboardEvent('keydown', escOpts));
+        document.body.dispatchEvent(new KeyboardEvent('keydown', escOpts));
+      } catch (e) { /* ignore */ }
+
+      const doubaoEditor =
+        document.querySelector('div.tiptap[contenteditable="true"][role="textbox"]')
+        || document.querySelector('[contenteditable="true"][role="textbox"]')
+        || document.querySelector('.ProseMirror[contenteditable="true"]');
+      if (!doubaoEditor) return { filled: false, reason: 'doubao-editor-not-found' };
+
+      try {
+        doubaoEditor.focus();
+        // 全选旧内容再替换，保证重复搜索时是覆盖而不是追加
+        const sel = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(doubaoEditor);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        const inserted = document.execCommand('insertText', false, query);
+        if (!inserted) {
+          // 兜底：直接写 DOM + input 事件（状态可能不同步，仅作退路）
+          doubaoEditor.textContent = query;
+          safeDispatch(doubaoEditor, Event, 'input', { bubbles: true });
+        }
+        // 提交不在脚本内做：合成键盘事件 isTrusted=false 可能被输入引擎忽略，
+        // 由 renderer 层补发 sendInputEvent 真实 Enter（见 fillWebview）。
+        return { filled: true, submitted: false, method: inserted ? 'execCommand' : 'dom-fallback' };
+      } catch (e) {
+        return { filled: false, reason: 'doubao-fill-error', error: e.message };
       }
     }
 
@@ -1242,6 +1301,13 @@ async function fillWebview(webview, query, maxRetries = 3) {
       }
 
       if (result && result.filled) {
+        // 豆包：tiptap ProseMirror 输入引擎只认真实键盘事件，
+        // 脚本内填充后由这里补发 trusted Enter 触发发送（豆包默认 Enter=发送）
+        if (webview.id === 'doubao' && !result.submitted) {
+          await new Promise((r) => setTimeout(r, 300));
+          webview.sendInputEvent({ type: 'keyDown', keyCode: 'Enter' });
+          webview.sendInputEvent({ type: 'keyUp', keyCode: 'Enter' });
+        }
         console.log(`[3for] ${webview.id}: filled successfully`, result);
         return result;
       }
@@ -1307,6 +1373,10 @@ const summaryHighlights = document.getElementById('summary-highlights');
 const summaryLoadingText = document.getElementById('summary-loading-text');
 const summaryErrorText = document.getElementById('summary-error-text');
 const btnRegenerate = document.getElementById('btn-regenerate');
+
+// 最近一次成功生成的总结快照：{ query, sources: [{id,name,type,text}], summaryText }
+// 用于下载时判断总结是否对应当前原文（指纹比对）
+let lastSummary = null;
 
 /** Toggle the summary drawer open/closed */
 function toggleSummary() {
@@ -1417,6 +1487,18 @@ async function generateSummary() {
       return;
     }
 
+    // 缓存本次总结快照，供下载时判定"总结是否对应当前原文"
+    lastSummary = {
+      query: mainSearch.value.trim(),
+      sources: validSources.map(([id, text]) => ({
+        id,
+        name: getSourceConfig(id).name,
+        type: getSourceConfig(id).type,
+        text,
+      })),
+      summaryText: response.result,
+    };
+
     renderSummaryResult(response.result, validSources);
     showSummaryState('result');
   } catch (err) {
@@ -1499,12 +1581,136 @@ function renderSummaryResult(text, validSources) {
   }
 }
 
+// ─── Toast ──────────────────────────────────────────────────
+
+/**
+ * 全局 toast 提示。
+ * @param {string} message
+ * @param {boolean} [isError] - true 时以错误样式展示
+ */
+function showToast(message, isError = false) {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+
+  const toast = document.createElement('div');
+  toast.className = 'toast' + (isError ? ' toast-error' : '');
+  toast.textContent = message;
+  container.appendChild(toast);
+
+  // 触发过渡动画
+  requestAnimationFrame(() => toast.classList.add('show'));
+
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 250);
+  }, 2500);
+}
+
+// ─── Results Download (Markdown) ────────────────────────────
+
+/** 生成下载文件名：3for-YYYYMMDD-HHmm-<问题前20字> */
+function buildDownloadFilename(query) {
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const stamp =
+    String(now.getFullYear()) + pad(now.getMonth() + 1) + pad(now.getDate()) +
+    '-' + pad(now.getHours()) + pad(now.getMinutes());
+  const titlePart = (query || '搜索结果').replace(/\s+/g, ' ').trim().slice(0, 20);
+  return `3for-${stamp}-${titlePart}`;
+}
+
+/**
+ * 组装 Markdown 内容。
+ * @param {string} query
+ * @param {Array<{id,name,type,text}>} sources - 当前提取到的各源原文
+ * @param {string|null} summaryText - 对应当前原文的 AI 总结；无或已过期时为 null
+ */
+function buildResultsMarkdown(query, sources, summaryText) {
+  const timeStr = new Date().toLocaleString('zh-CN', { hour12: false });
+  const sourceNames = sources.map((s) => s.name).join('、');
+
+  const parts = [
+    `# ${query || '搜索结果'}`,
+    '',
+    `> 时间：${timeStr} · 来源：${sourceNames}`,
+    '',
+  ];
+
+  // 仅当 AI 总结与当前原文指纹一致时才附上（否则导出的是过期总结，会误导）
+  if (summaryText) {
+    parts.push('## AI 总结', '', summaryText.trim(), '', '---', '');
+  }
+
+  for (const s of sources) {
+    parts.push(`## ${s.name}（${s.type}）`, '', s.text.trim(), '');
+  }
+
+  return parts.join('\n');
+}
+
+/** 下载按钮点击：现场提取当前各源内容，按三种状态决定导出范围 */
+async function handleDownloadResults() {
+  const btn = document.getElementById('btn-download-md');
+  if (btn) btn.disabled = true;
+
+  try {
+    // 现场提取，保证导出的是"当前"面板内容
+    const wvs = Array.from(getWebviews());
+    const entries = await Promise.all(
+      wvs.map(async (wv) => {
+        const result = await extractFromWebview(wv);
+        const config = getSourceConfig(wv.id);
+        return { id: wv.id, name: config.name, type: config.type, text: result.text || '' };
+      })
+    );
+    const sources = entries.filter((s) => s.text && s.text.length > 20);
+
+    if (sources.length === 0) {
+      showToast('未检测到有效内容，请先搜索', true);
+      return;
+    }
+
+    const query = mainSearch.value.trim();
+
+    // 三态判定：
+    // 1) 无总结缓存 → 仅原文
+    // 2) 缓存的总结对应的是上次原文（query 或任一源文本不一致）→ 仅原文
+    // 3) 缓存总结与当前原文指纹一致 → 原文 + AI 总结
+    let summaryText = null;
+    if (lastSummary && lastSummary.query === query) {
+      const cachedMap = new Map(lastSummary.sources.map((s) => [s.id, s.text]));
+      const matched =
+        lastSummary.sources.length === sources.length &&
+        sources.every((s) => cachedMap.get(s.id) === s.text);
+      if (matched) summaryText = lastSummary.summaryText;
+    }
+
+    const markdown = buildResultsMarkdown(query, sources, summaryText);
+    const res = await window.electronAPI.saveMarkdown({
+      filename: buildDownloadFilename(query),
+      content: markdown,
+    });
+
+    if (res && res.success) {
+      showToast('已下载本次搜索结果原文和 AI 总结（如有）');
+    } else {
+      showToast(`下载失败：${(res && res.error) || '未知错误'}`, true);
+    }
+  } catch (err) {
+    console.error('[3for] 下载结果失败:', err);
+    showToast(`下载失败：${err.message}`, true);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 // ─── Event Listeners ────────────────────────────────────────
 
 // Summary drawer
 btnSummary.addEventListener('click', toggleSummary);
 drawerCloseBtn.addEventListener('click', closeSummary);
 btnGenerate.addEventListener('click', generateSummary);
+document.getElementById('btn-download-md').addEventListener('click', handleDownloadResults);
 btnRetry.addEventListener('click', generateSummary);
 if (btnRegenerate) {
   btnRegenerate.addEventListener('click', generateSummary);
