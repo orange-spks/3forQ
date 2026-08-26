@@ -46,7 +46,9 @@ function addTab(url) {
   wv.id = id;
   wv.className = 'reader-webview';
   wv.src = url;
-  wv.setAttribute('partition', 'persist:reader');
+  // 与主窗口源面板共用 persist:sources 会话，继承其登录态（Cookie/存储），
+  // 行为与浏览器新开标签页一致，避免阅读器内重复登录
+  wv.setAttribute('partition', 'persist:sources');
   wv.setAttribute('allowpopups', '');
   contentContainer.appendChild(wv);
   tab.webview = wv;
