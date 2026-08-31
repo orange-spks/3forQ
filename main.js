@@ -242,6 +242,11 @@ function createWindow() {
       webviewTag: true,
       contextIsolation: true,
       nodeIntegration: false,
+      // sandboxed preload 里没有 __dirname / path 模块，
+      // webview guest preload 的路径只能从主进程经 additionalArguments 传入
+      additionalArguments: [
+        `--webview-preload=file://${path.join(__dirname, 'src', 'webview-preload.js')}`,
+      ],
     },
   });
 
@@ -395,7 +400,9 @@ app.on('web-contents-created', (_event, contents) => {
     }
   });
 
-  // 转发缩放快捷键与阅读器查找快捷键
+  // 转发缩放快捷键与阅读器查找快捷键。
+  // 注意：Esc（退出面板全屏）不在这里转发——站点可能自己消费 Esc（如小红书
+  // 帖子弹层），改由 src/webview-preload.js 在页面上下文判定后经 sendToHost 上报。
   contents.on('before-input-event', (event, input) => {
     const isMod = input.control || input.meta;
     if (!isMod) return;
@@ -423,6 +430,16 @@ app.on('web-contents-created', (_event, contents) => {
 });
 
 app.whenReady().then(() => {
+  // 清掉残留 Dock 角标：站点 Badging API（如 Kimi 未读数）可能穿透写到 Dock，
+  // 启动时统一清空
+  if (app.dock) app.dock.setBadge('');
+
+  // 兜底：主世界注入与站点脚本存在时序竞争，万一漏网（或 macOS 通知中心重写），
+  // 轮询发现角标非空即清掉，保证 Dock 角标始终为空
+  setInterval(() => {
+    if (app.dock && app.dock.getBadge() !== '') app.dock.setBadge('');
+  }, 3000);
+
   setupMenu();
   setApplicationIcon();
   createWindow();

@@ -871,6 +871,7 @@ function buildPanelHTML(index, sourceId) {
           id="${sourceId}"
           src="${config.url}"
           partition="persist:sources"
+          preload="${window.appInfo.webviewPreloadPath}"
           allowpopups
         ></webview>
         <div class="panel-overlay" id="overlay-${sourceId}">
@@ -895,6 +896,18 @@ function initWebviews() {
   getWebviews().forEach((wv) => attachWebviewListeners(wv));
 }
 
+// 屏蔽站点 Badging API 的主世界注入脚本（Kimi 会把未读数穿透到 macOS Dock 角标）。
+// 必须在主世界执行：contextIsolation 下 guest preload 的 Navigator 补丁影响不到页面。
+const BLOCK_BADGING_SCRIPT = `
+  for (const name of ['setAppBadge', 'clearAppBadge']) {
+    if (name in Navigator.prototype) {
+      try {
+        Navigator.prototype[name] = () => Promise.resolve();
+      } catch (e) { /* 忽略不可写场景 */ }
+    }
+  }
+`;
+
 /** Attach dom-ready, error, and focus listeners to a single webview. */
 function attachWebviewListeners(webview) {
   const sourceId = webview.id;
@@ -915,6 +928,15 @@ function attachWebviewListeners(webview) {
       ? (panelZoomIndexMap.get(panelIndex) ?? globalZoomIndex)
       : globalZoomIndex;
     safeSetZoom(webview, ZOOM_LEVELS[zoomIndex]);
+
+    // 主世界注入 Badging API 屏蔽（小红书未读数防穿透到 Dock 角标）
+    webview.executeJavaScript(BLOCK_BADGING_SCRIPT).catch(() => {});
+  });
+
+  // webview guest preload 上报的 Esc：页面上下文已确认站点没有消费
+  // （无弹层、未 preventDefault、焦点不在输入框），与宿主内按 Esc 行为一致
+  webview.addEventListener('ipc-message', (e) => {
+    if (e.channel === 'webview-escape') handleEscape();
   });
 
   webview.addEventListener('did-fail-load', () => {
@@ -965,6 +987,7 @@ function swapSource(panelIndex, newSourceId) {
   newWebview.id = newSourceId;
   newWebview.src = config.url;
   newWebview.setAttribute('partition', 'persist:sources');
+  newWebview.setAttribute('preload', window.appInfo.webviewPreloadPath);
   newWebview.setAttribute('allowpopups', '');
   panelBody.insertBefore(newWebview, panelBody.firstChild);
 
@@ -1818,6 +1841,17 @@ if (btnNewChat) {
 
 // ─── Keyboard Shortcuts ─────────────────────────────────────
 
+/** Esc 统一处理：搜索框失焦、关闭源选择器/设置/总结抽屉、收起全屏面板。
+ *  焦点在宿主页面时由 document keydown 触发；焦点在 webview 内时按键被其吞掉，
+ *  由主进程 before-input-event 转发 'webview-escape' 后同样调用本函数。 */
+function handleEscape() {
+  mainSearch.blur();
+  hideSourcePicker();
+  hideSettings();
+  closeSummary();
+  collapseAll();
+}
+
 document.addEventListener('keydown', (e) => {
   const isMod = e.ctrlKey || e.metaKey;
 
@@ -1854,11 +1888,7 @@ document.addEventListener('keydown', (e) => {
 
   // Escape: blur search bar, close picker, close drawer, collapse fullscreen, close settings
   if (e.key === 'Escape') {
-    mainSearch.blur();
-    hideSourcePicker();
-    hideSettings();
-    closeSummary();
-    collapseAll();
+    handleEscape();
   }
 });
 
