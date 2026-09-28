@@ -898,6 +898,8 @@ function initWebviews() {
 
 // 屏蔽站点 Badging API 的主世界注入脚本（Kimi 会把未读数穿透到 macOS Dock 角标）。
 // 必须在主世界执行：contextIsolation 下 guest preload 的 Navigator 补丁影响不到页面。
+// 结尾的 void 0 必不可少：脚本完成值会作为 executeJavaScript 的返回值跨进程克隆，
+// 若落在赋值表达式上（值为函数）会报 "An object could not be cloned"。
 const BLOCK_BADGING_SCRIPT = `
   for (const name of ['setAppBadge', 'clearAppBadge']) {
     if (name in Navigator.prototype) {
@@ -906,6 +908,7 @@ const BLOCK_BADGING_SCRIPT = `
       } catch (e) { /* 忽略不可写场景 */ }
     }
   }
+  void 0;
 `;
 
 /** Attach dom-ready, error, and focus listeners to a single webview. */
