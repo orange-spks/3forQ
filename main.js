@@ -12,6 +12,7 @@
 const { app, BrowserWindow, ipcMain, Menu, shell, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { pathToFileURL } = require('url');
 
 let mainWindow;
 
@@ -243,9 +244,11 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       // sandboxed preload 里没有 __dirname / path 模块，
-      // webview guest preload 的路径只能从主进程经 additionalArguments 传入
+      // webview guest preload 的路径只能从主进程经 additionalArguments 传入。
+      // 必须用 pathToFileURL：Windows 下 path.join 产生反斜杠，
+      // 手拼 file:// 会得到非法 URL，导致 guest 创建失败。
       additionalArguments: [
-        `--webview-preload=file://${path.join(__dirname, 'src', 'webview-preload.js')}`,
+        `--webview-preload=${pathToFileURL(path.join(__dirname, 'src', 'webview-preload.js')).href}`,
       ],
     },
   });

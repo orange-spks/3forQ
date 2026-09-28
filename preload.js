@@ -12,11 +12,12 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 // sandboxed preload 中没有 __dirname，也没有 path 模块，
 // webview guest preload 路径由主进程经 additionalArguments 传入。
-// 项目路径含中文（Downloads/编程/），需 encodeURI 转成合法 file URL。
+// 主进程已用 pathToFileURL 生成合法 file URL（含中文路径的百分号编码），
+// 此处不可再 encodeURI，否则 % 会被二次编码成 %25。
 const webviewPreloadArg = (process.argv || [])
   .find((a) => a.startsWith('--webview-preload='));
 const webviewPreloadPath = webviewPreloadArg
-  ? encodeURI(webviewPreloadArg.slice('--webview-preload='.length))
+  ? webviewPreloadArg.slice('--webview-preload='.length)
   : '';
 
 contextBridge.exposeInMainWorld('appInfo', {
