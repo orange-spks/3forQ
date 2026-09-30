@@ -9,7 +9,7 @@
  * Kimi/Moonshot, Guiji, OpenAI, etc.). User sets base URL + API key + model.
  */
 
-const { app, BrowserWindow, ipcMain, Menu, shell, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, shell, clipboard, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -430,6 +430,16 @@ app.on('web-contents-created', (_event, contents) => {
 });
 
 app.whenReady().then(() => {
+  // 伪装 UA：Electron 默认 UA 带有 "应用名/版本" 和 "Electron/版本" 标记，
+  // Cloudflare 等风控会据此识别嵌入浏览器并触发人机验证（grok.com 加载慢/失败的原因之一）。
+  // 只保留标准 Chrome UA；setUserAgent 会同步修改请求头与 navigator.userAgent，两侧一致。
+  const sourcesSession = session.fromPartition('persist:sources');
+  const appNameEscaped = app.getName().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const cleanUA = sourcesSession.getUserAgent()
+    .replace(new RegExp(`\\s*${appNameEscaped}/[\\d.]+`), '')  // 去掉 "3for/1.0.0" 应用名标记
+    .replace(/\s*Electron\/[\d.]+/, '');                        // 去掉 "Electron/xx" 标记
+  sourcesSession.setUserAgent(cleanUA);
+
   // 清掉残留 Dock 角标：站点 Badging API（如 Kimi 未读数）可能穿透写到 Dock，
   // 启动时统一清空
   if (app.dock) app.dock.setBadge('');
