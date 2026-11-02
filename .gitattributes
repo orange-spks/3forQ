@@ -1,0 +1,6 @@
+# 启动脚本行尾约束：
+# - .command 在 macOS 双击执行，shebang 要求 LF，CRLF 会导致无法运行
+# - .bat 在 Windows 双击执行，统一 CRLF
+*.command text eol=lf
+*.sh      text eol=lf
+*.bat     text eol=crlf

@@ -42,5 +42,18 @@ if [ ! -d "node_modules" ]; then
   npm install
 fi
 
+# nohup + 后台运行 + disown：进程与终端完全脱离，
+# 关闭本窗口（或退出终端）都不会导致应用退出。
+# 日志输出到 logs/launch.log，方便排查问题。
+if [ ! -x "node_modules/.bin/electron" ]; then
+  echo "❌ 未找到 Electron 程序，请删除 node_modules 目录后重新运行本脚本"
+  read -k 1 "?按任意键退出..."
+  exit 1
+fi
+
+mkdir -p logs
 echo "🚀 启动 3for..."
-npm start
+nohup ./node_modules/.bin/electron . > logs/launch.log 2>&1 &
+disown
+
+echo "✅ 3for 已在后台独立运行，本窗口可直接关闭（日志：logs/launch.log）"

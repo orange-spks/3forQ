@@ -1,38 +1,49 @@
 @echo off
 rem ============================================================
-rem 3for ä¸€é”®å¯åŠ¨è„šæœ¬ï¼ˆWindowsï¼‰
-rem ç”¨æ³•ï¼šåŒå‡»æœ¬æ–‡ä»¶å³å¯å¯åŠ¨
-rem æç¤ºï¼šå³é”®æœ¬æ–‡ä»¶ â†’ å‘é€åˆ° â†’ æ¡Œé¢å¿«æ·æ–¹å¼ï¼Œå³å¯æ¡Œé¢åŒå‡»å¯åŠ¨
+rem 3for Ò»¼üÆô¶¯½Å±¾£¨Windows£©
+rem ÓÃ·¨£ºË«»÷±¾ÎÄ¼ş¼´¿ÉÆô¶¯
+rem ÌáÊ¾£ºÓÒ¼ü±¾ÎÄ¼ş ¡ú ·¢ËÍµ½ ¡ú ×ÀÃæ¿ì½İ·½Ê½£¬¼´¿É×ÀÃæË«»÷Æô¶¯
 rem ============================================================
 
-rem ç”¨ UTF-8 ç¼–ç æ˜¾ç¤ºä¸­æ–‡ï¼Œé¿å…ä¹±ç 
-chcp 65001 >nul
-
-rem åˆ‡æ¢åˆ°è„šæœ¬æ‰€åœ¨ç›®å½•ï¼ˆå³é¡¹ç›®æ ¹ç›®å½•ï¼‰ï¼Œ/d å…¼å®¹è·¨ç›˜ç¬¦
+rem ÇĞ»»µ½½Å±¾ËùÔÚÄ¿Â¼£¨¼´ÏîÄ¿¸ùÄ¿Â¼£©£¬/d ¼æÈİ¿çÅÌ·û
 cd /d "%~dp0"
 
-rem æ£€æŸ¥ npm æ˜¯å¦å¯ç”¨
+rem ¼ì²é npm ÊÇ·ñ¿ÉÓÃ
 where npm >nul 2>nul
 if errorlevel 1 (
-  echo [é”™è¯¯] æœªæ‰¾åˆ° npmï¼Œè¯·ç¡®è®¤å·²å®‰è£… Node.js å¹¶åŠ å…¥ PATH
-  echo ä¸‹è½½åœ°å€: https://nodejs.org/
+  echo [´íÎó] Î´ÕÒµ½ npm£¬ÇëÈ·ÈÏÒÑ°²×° Node.js ²¢¼ÓÈë PATH
+  echo ÏÂÔØµØÖ·: https://nodejs.org/
   pause
   exit /b 1
 )
 
-rem é¦–æ¬¡ä½¿ç”¨ / ä¾èµ–è¢«æ¸…ç†è¿‡æ—¶è‡ªåŠ¨å®‰è£…
+rem Ê×´ÎÊ¹ÓÃ / ÒÀÀµ±»ÇåÀí¹ıÊ±×Ô¶¯°²×°
 if not exist "node_modules" (
-  echo [æç¤º] é¦–æ¬¡è¿è¡Œï¼Œæ­£åœ¨å®‰è£…ä¾èµ–...
+  echo [ÌáÊ¾] Ê×´ÎÔËĞĞ£¬ÕıÔÚ°²×°ÒÀÀµ...
   call npm install
   if errorlevel 1 (
-    echo [é”™è¯¯] ä¾èµ–å®‰è£…å¤±è´¥
+    echo [´íÎó] ÒÀÀµ°²×°Ê§°Ü
     pause
     exit /b 1
   )
 )
 
-echo [å¯åŠ¨] 3for...
-call npm start
+rem ÒÔ¶ÀÁ¢½ø³Ì·½Ê½Æô¶¯ Electron£ºÓëÔ­ÃüÁîĞĞ´°¿ÚÍêÈ«ÍÑÀë£¬
+rem ¹Ø±Õ±¾´°¿Ú£¨»òÈÎºÎÖÕ¶Ë£©¶¼²»»áµ¼ÖÂÓ¦ÓÃÍË³ö¡£
+rem ÈÕÖ¾Êä³öµ½ logs\ Ä¿Â¼£¬·½±ãÅÅ²éÎÊÌâ¡£
+if not exist "node_modules\electron\dist\electron.exe" (
+  echo [´íÎó] Î´ÕÒµ½ Electron ³ÌĞò£¬ÇëÉ¾³ı node_modules Ä¿Â¼ºóÖØĞÂÔËĞĞ±¾½Å±¾
+  pause
+  exit /b 1
+)
 
-rem å¼‚å¸¸é€€å‡ºæ—¶æš‚åœï¼Œæ–¹ä¾¿çœ‹æŠ¥é”™ä¿¡æ¯
-if errorlevel 1 pause
+echo [Æô¶¯] 3for...
+if not exist "logs" mkdir logs
+powershell -NoProfile -Command "Start-Process -FilePath '%~dp0node_modules\electron\dist\electron.exe' -ArgumentList '.' -WorkingDirectory '%~dp0' -RedirectStandardOutput '%~dp0logs\app.log' -RedirectStandardError '%~dp0logs\app.err.log'"
+if errorlevel 1 (
+  echo [´íÎó] Æô¶¯Ê§°Ü
+  pause
+  exit /b 1
+)
+
+echo [Íê³É] 3for ÒÑÔÚºóÌ¨¶ÀÁ¢ÔËĞĞ£¬±¾´°¿Ú¿ÉÖ±½Ó¹Ø±Õ
